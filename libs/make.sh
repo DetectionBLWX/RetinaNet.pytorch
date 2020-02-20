@@ -8,3 +8,5 @@ cd ..
 cd ..
 
 python setup.py develop
+rm -rf build
+rm -rf retinanet.egg-info
