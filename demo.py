@@ -1,8 +1,8 @@
 '''
 Function:
-    detect objects in one image
+	detect objects in one image
 Author:
-    Charles
+	Charles
 '''
 import torch
 import argparse

@@ -1,8 +1,8 @@
 '''
 Function:
-    some util functions used for many module files
+	some util functions used for many module files
 Author:
-    Charles
+	Charles
 '''
 import os
 import torch
@@ -61,11 +61,11 @@ def adjustLearningRate(optimizer, target_lr, logger_handle):
 
 '''some functions for bboxes'''
 class BBoxFunctions(object):
-    def __init__(self):
+	def __init__(self):
 		self.info = 'bbox functions'
-    def __repr__(self):
+	def __repr__(self):
 		return self.info
-    
+
 
 '''save checkpoints'''
 def saveCheckpoints(state_dict, savepath, logger_handle):
