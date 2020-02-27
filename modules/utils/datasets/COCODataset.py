@@ -41,6 +41,7 @@ class COCODataset(Dataset):
 		annfilepath = kwargs.get('annfilepath')
 		if not annfilepath:
 			annfilepath = COCODataset.getAnnFilePath(self.rootdir, self.datasettype)
+		self.coco_api = COCO(annfilepath)
 		# get categories and the maps
 		categories = self.coco_api.loadCats(self.coco_api.getCatIds())
 		self.clsnames = tuple([c['name'] for c in categories])
@@ -90,7 +91,21 @@ class COCODataset(Dataset):
 			# return necessary data
 			return img_id, img, gt_boxes_padding, img_info, num_gt_boxes
 		else:
-			pass
+			# get image id
+			img_id = self.filtered_img_ids[index]
+			# read img
+			img_path = self.imgid2imgpath(img_id, self.datasettype)
+			img = Image.open(img_path).convert('RGB')
+			w_ori, h_ori = img.width, img.height
+			img, scale_factor, target_size = COCODataset.preprocessImage(img, use_color_jitter=False, image_size_dict=self.image_size_dict, img_norm_info=self.img_norm_info)
+			# img info: (h, w, scale_factor)
+			img_info = torch.from_numpy(np.array([target_size[0], target_size[1], scale_factor]))
+			# placeholder for gt_boxes_padding
+			gt_boxes_padding = torch.from_numpy(np.array([1, 1, 1, 1, 0]))
+			# placeholder for gt_boxes_padding
+			num_gt_boxes = torch.from_numpy(np.array([0]))
+			# return necessary data
+			return img_id, img, w_ori, h_ori, gt_boxes_padding, img_info, num_gt_boxes
 	'''calculate mmAP by using coco api'''
 	def doDetectionEval(self, img_ids, resultsfilepath):
 		coco_pred = self.coco_api.loadRes(resultsfilepath)

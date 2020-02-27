@@ -72,6 +72,7 @@ class FPNResNets(nn.Module):
 		p4 = self.smooth_layer0(p4)
 		p3 = self.upsampleAdd(p4, self.lateral_layer2(c3))
 		p3 = self.smooth_layer1(p3)
+		# return all feature pyramid levels
 		return [p3, p4, p5, p6, p7]
 	'''upsample and add'''
 	def upsampleAdd(self, p, c):

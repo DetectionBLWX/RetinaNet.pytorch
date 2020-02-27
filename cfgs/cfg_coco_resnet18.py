@@ -1,13 +1,16 @@
-'''config file for resnet50-coco'''
+'''config file for resnet18-coco'''
 
 
 # anchors
 ANCHOR_RATIOS = [0.5, 1, 2]
 ANCHOR_SCALES = [1, 2**(1./3.), 2**(2./3.)]
+BBOX_NORMALIZE_MEANS = (0.0, 0.0, 0.0, 0.0)
+BBOX_NORMALIZE_STDS = (0.1, 0.1, 0.2, 0.2)
 # backbone
-BACKBONE_TYPE = 'resnet50'
+BACKBONE_TYPE = 'resnet18'
 PRETRAINED_MODEL_PATH = ''
 IS_MULTI_GPUS = True
+ADDED_MODULES_WEIGHT_INIT_METHOD = None
 # dataset
 DATASET_ROOT_DIR = ''
 MAX_NUM_GT_BOXES = 50
@@ -32,9 +35,9 @@ NUM_WARMUP_STEPS = 500
 # image size
 IMAGESIZE_DICT = {'LONG_SIDE': 800, 'SHORT_SIDE': 800}
 # record
-TRAIN_BACKUPDIR = 'retinanet_res50_trainbackup_coco'
-TRAIN_LOGFILE = 'retinanet_res50_trainbackup_coco/train.log'
-TEST_BACKUPDIR = 'retinanet_res50_testbackup_coco'
-TEST_LOGFILE = 'retinanet_res50_testbackup_coco/test.log'
-TEST_BBOXES_SAVE_PATH = 'retinanet_res50_testbackup_coco/retinanet_res50_detection_results_coco.json'
+TRAIN_BACKUPDIR = 'retinanet_res18_trainbackup_coco'
+TRAIN_LOGFILE = 'retinanet_res18_trainbackup_coco/train.log'
+TEST_BACKUPDIR = 'retinanet_res18_testbackup_coco'
+TEST_LOGFILE = 'retinanet_res18_testbackup_coco/test.log'
+TEST_BBOXES_SAVE_PATH = 'retinanet_res18_testbackup_coco/retinanet_res18_detection_results_coco.json'
 SAVE_INTERVAL = 1

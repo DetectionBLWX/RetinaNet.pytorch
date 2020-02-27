@@ -1,1 +1,0 @@
-'''config file for resnet50-coco'''

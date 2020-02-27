@@ -7,6 +7,7 @@ Author:
 import os
 import torch
 import logging
+import torch.nn as nn
 
 
 '''check the existence of dirpath'''
