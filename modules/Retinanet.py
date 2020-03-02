@@ -5,8 +5,10 @@ Author:
 	Charles
 '''
 import torch
+import numpy as np
 import torch.nn as nn
 from modules.backbones import *
+from modules.utils.utils import *
 from modules.losses.smoothL1 import *
 from modules.losses.focalLoss import *
 
@@ -19,6 +21,9 @@ class RetinanetBase(nn.Module):
 		self.cfg = cfg
 		self.num_classes = cfg.NUM_CLASSES
 		self.num_anchors = len(cfg.ANCHOR_RATIOS) * len(cfg.ANCHOR_SCALES)
+		self.anchor_base_sizes = cfg.ANCHOR_BASE_SIZES
+		self.anchor_ratios = cfg.ANCHOR_RATIOS
+		self.anchor_scales = cfg.ANCHOR_SCALES
 		# define fpn
 		self.fpn_model = None
 		# define regression and classification layer
@@ -27,11 +32,14 @@ class RetinanetBase(nn.Module):
 	'''forward'''
 	def forward(self, x, gt_boxes, img_info, num_gt_boxes):
 		batch_size = x.size(0)
+		feature_shapes = []
 		# get fpn features
 		features = self.fpn_model(x)
 		# get regression features
 		features_reg = []
 		for x in features:
+			# --record the shape of each feature map
+			feature_shapes.append([x.size(2), x.size(3)])
 			out = self.regression_layer(x)
 			# --convert (B, C, H, W) to (B, H, W, C)
 			out = out.permute(0, 2, 3, 1)
@@ -54,16 +62,51 @@ class RetinanetBase(nn.Module):
 			features_cls.append(out)
 		features_cls = torch.cat(features_cls, dim=1)
 		# get anchors
-
-
-
+		anchors = RetinanetBase.generateAnchors(base_sizes=self.anchor_base_sizes, scales=self.anchor_scales, ratios=self.anchor_ratios, feature_shapes=feature_shapes, feature_strides=self.feature_strides)
+		# define losses
+		loss_cls = torch.Tensor([0]).type_as(x)
+		loss_reg = torch.Tensor([0]).type_as(x)
+		# if mode == 'TRAIN', calculate loss
+		if self.mode == 'TRAIN' and gt_boxes is not None:
+			pass
+		# return the necessary data
+		return nn.Sigmoid()(features_cls), features_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
-	def initializeAddedModules(self):
+	def initializeAddedModules(self, init_method):
 		raise NotImplementedError
-	'''generate anchors'''
+	'''
+	Function:
+		generate anchors
+	Input:
+		--base_sizes(list): the base anchor size for each pyramid level.
+		--scales(list): scales for each pyramid level.
+		--ratios(list): ratios for anchor boxes in each pyramid level.
+		--feature_shapes(list): the size of feature maps in each pyramid level.
+		--feature_strides(list): the strides in each pyramid level.
+	Return:
+		--anchors(np.array): [nA, 4], the format is (x1, y1, x2, y2).
+	'''
 	@staticmethod
-	def generateAnchors(self):
-		pass
+	def generateAnchors(base_sizes=[32, 64, 128, 256, 512], scales=[1, 2**(1.0/3.0), 2**(2.0/3.0)], ratios=[0.5, 1, 2], feature_shapes=list(), feature_strides=list()):
+		assert len(base_sizes) = len(feature_shapes) and len(feature_shapes) == len(feature_strides), 'for <base_sizes> <feature_shapes> and <feature_strides>, expect the same length.'
+		anchors = []
+		for i in range(len(base_sizes)):
+			for scale in scales:
+				scales_pyramid, ratios_pyramid = np.meshgrid(np.array(scale*base_sizes[i]), np.array(ratios))
+				scales_pyramid, ratios_pyramid = scales_pyramid.flatten(), ratios_pyramid.flatten()
+				heights = scales_pyramid / np.sqrt(ratios_pyramid)
+				widths = scales_pyramid * np.sqrt(ratios_pyramid)
+				shifts_x = np.arange(0, feature_shapes[i][1], 1) * feature_strides[i] + 0.5 * feature_strides[i]
+				shifts_y = np.arange(0, feature_shapes[i][0], 1) * feature_strides[i] + 0.5 * feature_strides[i]
+				shifts_x, shifts_y = np.meshgrid(shifts_x, shifts_y)
+				widths, cxs = np.meshgrid(widths, shifts_x)
+				heights, cys = np.meshgrid(heights, shifts_y)
+				boxes_cxcy = np.stack([cxs, cys], axis=2).reshape([-1, 2])
+				boxes_whs = np.stack([widths, heights], axis=2).reshape([-1, 2])
+				anchors_pyramid = np.concatenate([boxes_cxcy-0.5*boxes_whs, boxes_cxcy+0.5*boxes_whs], axis=1)
+				anchors.append(anchors_pyramid)
+		anchors = np.concatenate(anchors, axis=0)
+		return torch.from_numpy(anchors).float()
 	'''set bn fixed'''
 	@staticmethod
 	def setBnFixed(m):
@@ -81,6 +124,7 @@ class RetinanetBase(nn.Module):
 
 '''Retinanet using resnet-FPN backbones'''
 class RetinanetFPNResNets(RetinanetBase):
+	feature_strides = [8, 16, 32, 64, 128]
 	def __init__(self, mode, cfg, logger_handle, **kwargs):
 		RetinanetBase.__init__(self, mode, cfg)
 		# define fpn
@@ -107,7 +151,7 @@ class RetinanetFPNResNets(RetinanetBase):
 												 nn.Sigmoid())
 		# weights initialize
 		if mode == 'TRAIN' and cfg.ADDED_MODULES_WEIGHT_INIT_METHOD:
-			self.initializeAddedModules()
+			self.initializeAddedModules(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD)
 		# fixed bn
 		self.fpn_model.apply(RetinanetBase.setBnFixed)
 		self.regression_layer.apply(RetinanetBase.setBnFixed)

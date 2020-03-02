@@ -44,12 +44,12 @@ class COCODataset(Dataset):
 		self.coco_api = COCO(annfilepath)
 		# get categories and the maps
 		categories = self.coco_api.loadCats(self.coco_api.getCatIds())
-		self.clsnames = tuple([c['name'] for c in categories])
+		self.clsnames = tuple(['__background__'] + [c['name'] for c in categories])
 		self.num_classes = len(self.clsnames)
 		self.clsnames2clsids_dict = dict(zip(self.clsnames, list(range(self.num_classes))))
 		self.clsnames2cococlsids_dict = dict(zip([c['name'] for c in categories], self.coco_api.getCatIds()))
-		self.clsids2cococlsids_dict = dict(zip(list(range(self.num_classes)), self.coco_api.getCatIds()))
-		self.cococlsids2clsids_dict = dict(zip(self.coco_api.getCatIds(), list(range(self.num_classes))))
+		self.clsids2cococlsids_dict = dict(zip(list(range(1, self.num_classes)), self.coco_api.getCatIds()))
+		self.cococlsids2clsids_dict = dict(zip(self.coco_api.getCatIds(), list(range(1, self.num_classes))))
 		# get all image ids
 		self.img_ids = list(self.coco_api.imgToAnns.keys()) if self.datasettype in ['train2017', 'val2017'] else self.coco_api.getImgIds()
 		# used to normalize image
@@ -201,4 +201,29 @@ class COCODataset(Dataset):
 	'''padding collate fn'''
 	@staticmethod
 	def paddingCollateFn(data_batch):
-		pass
+		# data_batch: [[img_id, img(channel, height, width), gt_boxes, img_info, num_gt_boxes], ...]
+		max_height = max([data[1].shape[1] for data in data_batch])
+		max_width = max([data[1].shape[2] for data in data_batch])
+		# get new data_batch
+		img_id_batch = []
+		img_batch = []
+		gt_boxes_batch = []
+		img_info_batch = []
+		num_gt_boxes_batch = []
+		for data in data_batch:
+			img_id, img, gt_boxes, img_info, num_gt_boxes = data
+			# (left, right, top, bottom)
+			img_padding = F.pad(input=img, pad=(0, max_width-img.shape[2], 0, max_height-img.shape[1]))
+			img_info[0] = max_height
+			img_info[1] = max_width
+			img_id_batch.append(torch.from_numpy(np.array([img_id])))
+			img_batch.append(img_padding)
+			gt_boxes_batch.append(gt_boxes)
+			img_info_batch.append(img_info)
+			num_gt_boxes_batch.append(num_gt_boxes)
+		img_id_batch = torch.stack(img_id_batch, dim=0)
+		img_batch = torch.stack(img_batch, dim=0)
+		gt_boxes_batch = torch.stack(gt_boxes_batch, dim=0)
+		img_info_batch = torch.stack(img_info_batch, dim=0)
+		num_gt_boxes_batch = torch.stack(num_gt_boxes_batch, dim=0)
+		return img_id_batch, img_batch, gt_boxes_batch, img_info_batch, num_gt_boxes_batch
