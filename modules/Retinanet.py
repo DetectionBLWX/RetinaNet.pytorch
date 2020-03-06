@@ -13,6 +13,77 @@ from modules.losses.smoothL1 import *
 from modules.losses.focalLoss import *
 
 
+'''build target layer'''
+class buildTargetLayer(nn.Module):
+	def __init__(self, cfg, **kwargs):
+		super(buildTargetLayer, self).__init__()
+		self.allowed_border = 0
+		self.fg_iou_thresh = cfg.FG_IOU_THRESH
+		self.bg_iou_thresh = cfg.BG_IOU_THRESH
+		self.bbox_normalize_means = torch.FloatTensor(cfg.BBOX_NORMALIZE_MEANS)
+		self.bbox_normalize_stds = torch.FloatTensor(cfg.TRAIN_BBOX_NORMALIZE_STDS)
+	'''forward'''
+	def forward(self, x):
+		# parse x
+		anchors, gt_boxes, img_info, num_gt_boxes = x
+		batch_size = gt_boxes.size(0)
+		self.bbox_normalize_means = self.bbox_normalize_means.type_as(gt_boxes)
+		self.bbox_normalize_stds = self.bbox_normalize_stds.type_as(gt_boxes)
+		# record number of anchors
+		total_anchors_ori = anchors.size(0)
+		# filter anchors
+		keep_idxs = ((anchors[:, 0] >= -self.allowed_border) &
+					 (anchors[:, 1] >= -self.allowed_border) &
+					 (anchors[:, 2] < int(img_info[0][1])+self.allowed_border) &
+					 (anchors[:, 3] < int(img_info[0][0])+self.allowed_border))
+		keep_idxs = torch.nonzero(keep_idxs).view(-1)
+		anchors = anchors[keep_idxs, :]
+		# prepare classification targets: larger than 0 denotes for objects, 0 denotes for background, -1 means ignore
+		cls_targets = gt_boxes.new(batch_size, keep_idxs.size(0)).fill_(-1)
+		# prepare regression targets
+		reg_targets = gt_boxes.new(batch_size, keep_idxs.size(0), 4).fill_(0)
+		# build targets
+			anchors_each = anchors.clone()
+			gt_boxes_each = gt_boxes[batch_idx][:num_gt_boxes[batch_idx].int().item()]
+			overlaps = BBoxFunctions.calcIoUs(anchors_each, gt_boxes_each[:, :-1])
+			max_overlaps, argmax_overlaps = torch.max(overlaps, 1)
+			gt_max_overlaps, gt_argmax_overlaps = torch.max(overlaps, 0)
+			max_overlaps.index_fill_(0, gt_argmax_overlaps, 2)
+			for i in range(gt_argmax_overlaps.size(1)):
+				argmax_overlaps[gt_argmax_overlaps[i]] = i
+			cls_targets_each = gt_boxes_each[:, -1][argmax_overlaps]
+			# --add background and ignore
+			cls_targets_each[max_overlaps.lt(self.fg_iou_thresh)] = 0
+			cls_targets_each[max_overlaps.lt(self.fg_iou_thresh) & max_overlaps.gt(self.bg_iou_thresh)] = -1
+			# --encode boxes
+			reg_targets_each = gt_boxes_each[:, :-1][argmax_overlaps]
+			reg_targets_each = BBoxFunctions.encodeBboxes(reg_targets_each)
+			# --merge
+			cls_targets[batch_idx] = cls_targets_each
+			reg_targets[batch_idx] = reg_targets_each
+		# post-processing
+		reg_targets = ((reg_targets - self.bbox_normalize_means.expand_as(reg_targets)) / self.bbox_normalize_stds.expand_as(reg_targets))
+		# umap
+		reg_targets = buildTargetLayer.umap(reg_targets, total_anchors_ori, keep_idxs, batch_size, fill=-1)
+		cls_targets = buildTargetLayer.umap(cls_targets, total_anchors_ori, keep_idxs, batch_size, fill=0)
+		# pack return values into outputs and return them
+		outputs = [cls_targets, reg_targets]
+		return outputs
+	'''unmap'''
+	@staticmethod
+	def unmap(data, count, inds, batch_size, fill=0):
+		if data.dim() == 2:
+			ret = torch.Tensor(batch_size, count).fill_(fill).type_as(data)
+			ret[:, inds] = data
+		else:
+			ret = torch.Tensor(batch_size, count, data.size(2)).fill_(fill).type_as(data)
+			ret[:, inds, :] = data
+		return ret
+	'''no backward'''
+	def backward(self, *args):
+		pass
+
+
 '''base model for Retinanet'''
 class RetinanetBase(nn.Module):
 	def __init__(self, mode, cfg, **kwargs):
@@ -26,6 +97,8 @@ class RetinanetBase(nn.Module):
 		self.anchor_scales = cfg.ANCHOR_SCALES
 		# define fpn
 		self.fpn_model = None
+		# define build target layer
+		self.build_target_layer = None
 		# define regression and classification layer
 		self.regression_layer = None
 		self.classification_layer = None
@@ -63,12 +136,13 @@ class RetinanetBase(nn.Module):
 		features_cls = torch.cat(features_cls, dim=1)
 		# get anchors
 		anchors = RetinanetBase.generateAnchors(base_sizes=self.anchor_base_sizes, scales=self.anchor_scales, ratios=self.anchor_ratios, feature_shapes=feature_shapes, feature_strides=self.feature_strides)
+		anchors = anchors.type_as(x)
 		# define losses
 		loss_cls = torch.Tensor([0]).type_as(x)
 		loss_reg = torch.Tensor([0]).type_as(x)
 		# if mode == 'TRAIN', calculate loss
 		if self.mode == 'TRAIN' and gt_boxes is not None:
-			pass
+			targets = self.build_target_layer((anchors.data, gt_boxes, img_info, num_gt_boxes))
 		# return the necessary data
 		return nn.Sigmoid()(features_cls), features_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
@@ -129,6 +203,8 @@ class RetinanetFPNResNets(RetinanetBase):
 		RetinanetBase.__init__(self, mode, cfg)
 		# define fpn
 		self.fpn_model = FPNResNets(mode, cfg, logger_handle)
+		# define build target layer
+		self.build_target_layer = buildTargetLayer(cfg)
 		# define regression and classification layer
 		self.regression_layer = nn.Sequential(nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
 											  nn.ReLU(inplace=True),
