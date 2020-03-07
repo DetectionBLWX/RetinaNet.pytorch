@@ -21,7 +21,7 @@ class buildTargetLayer(nn.Module):
 		self.fg_iou_thresh = cfg.FG_IOU_THRESH
 		self.bg_iou_thresh = cfg.BG_IOU_THRESH
 		self.bbox_normalize_means = torch.FloatTensor(cfg.BBOX_NORMALIZE_MEANS)
-		self.bbox_normalize_stds = torch.FloatTensor(cfg.TRAIN_BBOX_NORMALIZE_STDS)
+		self.bbox_normalize_stds = torch.FloatTensor(cfg.BBOX_NORMALIZE_STDS)
 	'''forward'''
 	def forward(self, x):
 		# parse x
@@ -50,7 +50,7 @@ class buildTargetLayer(nn.Module):
 			max_overlaps, argmax_overlaps = torch.max(overlaps, 1)
 			gt_max_overlaps, gt_argmax_overlaps = torch.max(overlaps, 0)
 			max_overlaps.index_fill_(0, gt_argmax_overlaps, 2)
-			for i in range(gt_argmax_overlaps.size(1)):
+			for i in range(gt_argmax_overlaps.size(0)):
 				argmax_overlaps[gt_argmax_overlaps[i]] = i
 			cls_targets_each = gt_boxes_each[:, -1][argmax_overlaps]
 			# --add background and ignore
@@ -58,15 +58,15 @@ class buildTargetLayer(nn.Module):
 			cls_targets_each[max_overlaps.lt(self.fg_iou_thresh) & max_overlaps.gt(self.bg_iou_thresh)] = -1
 			# --encode boxes
 			reg_targets_each = gt_boxes_each[:, :-1][argmax_overlaps]
-			reg_targets_each = BBoxFunctions.encodeBboxes(reg_targets_each)
+			reg_targets_each = BBoxFunctions.encodeBboxes(anchors_each, reg_targets_each)
 			# --merge
 			cls_targets[batch_idx] = cls_targets_each
 			reg_targets[batch_idx] = reg_targets_each
 		# post-processing
 		reg_targets = ((reg_targets - self.bbox_normalize_means.expand_as(reg_targets)) / self.bbox_normalize_stds.expand_as(reg_targets))
-		# umap
-		reg_targets = buildTargetLayer.umap(reg_targets, total_anchors_ori, keep_idxs, batch_size, fill=-1)
-		cls_targets = buildTargetLayer.umap(cls_targets, total_anchors_ori, keep_idxs, batch_size, fill=0)
+		# unmap
+		reg_targets = buildTargetLayer.unmap(reg_targets, total_anchors_ori, keep_idxs, batch_size, fill=-1)
+		cls_targets = buildTargetLayer.unmap(cls_targets, total_anchors_ori, keep_idxs, batch_size, fill=0)
 		# pack return values into outputs and return them
 		outputs = [cls_targets, reg_targets]
 		return outputs
@@ -158,11 +158,11 @@ class RetinanetBase(nn.Module):
 				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
 			# --calculate classification loss
 			if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
-				cls_targets_filtered = cls_targets[cls_targets > 0]
+				cls_targets_filtered = cls_targets[cls_targets > 0].view(-1)
 				preds_cls_filtered = preds_cls[cls_targets > 0]
 				cls_targets_filtered_one_hot = cls_targets_filtered.new(*cls_targets_filtered.size(), self.num_classes).fill_(0)
-				cls_targets_filtered_one_hot.scatter_(2, cls_targets_filtered.unsqueeze(-1).long(), 1)
-				loss_cls = self.focal_loss(preds_cls_filtered.view(-1, 1), cls_targets_filtered_one_hot.view(-1, 1))
+				cls_targets_filtered_one_hot.scatter_(1, cls_targets_filtered.unsqueeze(-1).long(), 1)
+				loss_cls = self.focal_loss(preds_cls_filtered.view(-1, 1), cls_targets_filtered_one_hot.view(-1, 1).long())
 			else:
 				raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
 		# return the necessary data
@@ -184,7 +184,7 @@ class RetinanetBase(nn.Module):
 	'''
 	@staticmethod
 	def generateAnchors(base_sizes=[32, 64, 128, 256, 512], scales=[1, 2**(1.0/3.0), 2**(2.0/3.0)], ratios=[0.5, 1, 2], feature_shapes=list(), feature_strides=list()):
-		assert len(base_sizes) = len(feature_shapes) and len(feature_shapes) == len(feature_strides), 'for <base_sizes> <feature_shapes> and <feature_strides>, expect the same length.'
+		assert (len(base_sizes) == len(feature_shapes)) and (len(feature_shapes) == len(feature_strides)), 'for <base_sizes> <feature_shapes> and <feature_strides>, expect the same length.'
 		anchors = []
 		for i in range(len(base_sizes)):
 			for scale in scales:

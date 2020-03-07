@@ -63,10 +63,41 @@ def test():
 	num_gt_boxes = torch.FloatTensor([0]).unsqueeze(0).type(FloatTensor)
 	with torch.no_grad():
 		output = model(x=input_img, gt_boxes=gt_boxes, img_info=img_info, num_gt_boxes=num_gt_boxes)
-	cls_probs = output[0].data
-	bbox_preds = output[1].data
+	anchors = output[0].data
+	preds_cls = output[1].data
+	preds_reg = output[2].data
 	# parse the results
-
+	preds_reg = preds_reg.view(-1, 4) * torch.FloatTensor(cfg.BBOX_NORMALIZE_STDS).type(FloatTensor) + torch.FloatTensor(cfg.BBOX_NORMALIZE_MEANS).type(FloatTensor)
+	preds_reg = preds_reg.view(1, -1, 4)
+	boxes_pred = BBoxFunctions.decodeBboxes(anchors, preds_reg)
+	boxes_pred = BBoxFunctions.clipBoxes(boxes_pred, torch.from_numpy(np.array([h_ori*scale_factor, w_ori*scale_factor, scale_factor])).unsqueeze(0).type(FloatTensor).data)
+	boxes_pred = boxes_pred.squeeze()
+	scores = preds_cls.squeeze()
+	thresh = 0.05
+	for j in range(1, cfg.NUM_CLASSES):
+		idxs = torch.nonzero(scores[:, j] > thresh).view(-1)
+		if idxs.numel() > 0:
+			cls_scores = scores[:, j][idxs]
+			_, order = torch.sort(cls_scores, 0, True)
+			cls_boxes = boxes_pred[idxs, :]
+			cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
+			cls_dets = cls_dets[order]
+			cls_dets, _ = nms(cls_dets, args.nmsthresh)
+			for cls_det in cls_dets:
+				if cls_det[-1] > args.confthresh:
+					x1, y1, x2, y2 = cls_det[:4]
+					x1 = x1.item() / scale_factor
+					x2 = x2.item() / scale_factor
+					y1 = y1.item() / scale_factor
+					y2 = y2.item() / scale_factor
+					label = clsnames[j-1]
+					logger_handle.info('Detect a %s in confidence %.4f...' % (label, cls_det[-1].item()))
+					color = (0, 255, 0)
+					draw = ImageDraw.Draw(img)
+					draw.line([(x1, y1), (x2, y1), (x2, y2), (x1, y2), (x1, y1)], width=2, fill=color)
+					font = ImageFont.truetype('libs/font.TTF', 25)
+					draw.text((x1+5, y1), label, fill=color, font=font)
+	img.save(os.path.join(cfg.TEST_BACKUPDIR, 'demo_output.jpg'))
 
 
 '''run'''

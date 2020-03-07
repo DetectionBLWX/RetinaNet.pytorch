@@ -95,39 +95,21 @@ class BBoxFunctions(object):
 	'''encode bboxes'''
 	@staticmethod
 	def encodeBboxes(boxes_pred, boxes_gt):
-		if boxes_pred.dim() == 2:
-			# convert (x1, y1, x2, y2) to (cx, cy, w, h) 
-			widths_pred = boxes_pred[..., 2] - boxes_pred[..., 0] + 1.0
-			heights_pred = boxes_pred[..., 3] - boxes_pred[..., 1] + 1.0
-			centerxs_pred = boxes_pred[..., 0] + 0.5 * widths_pred
-			centerys_pred = boxes_pred[..., 1] + 0.5 * heights_pred
-			widths_gt = boxes_gt[..., 2] - boxes_gt[..., 0] + 1.0
-			heights_gt = boxes_gt[..., 3] - boxes_gt[..., 1] + 1.0
-			centerxs_gt = boxes_gt[..., 0] + 0.5 * widths_gt
-			centerys_gt = boxes_gt[..., 1] + 0.5 * heights_gt
-			# calculate targets
-			dxs_target = (centerxs_gt - centerxs_pred.view(1, -1).expand_as(centerxs_gt)) / widths_pred
-			dys_target = (centerys_gt - centerys_pred.view(1, -1).expand_as(centerys_gt)) / heights_pred
-			dws_target = torch.log(widths_gt / widths_pred.view(1, -1).expand_as(widths_gt))
-			dhs_target = torch.log(heights_gt / heights_pred.view(1, -1).expand_as(heights_gt))
-		elif boxes_pred.dim() == 3:
-			# convert (x1, y1, x2, y2) to (cx, cy, w, h) 
-			widths_pred = boxes_pred[..., 2] - boxes_pred[..., 0] + 1.0
-			heights_pred = boxes_pred[..., 3] - boxes_pred[..., 1] + 1.0
-			centerxs_pred = boxes_pred[..., 0] + 0.5 * widths_pred
-			centerys_pred = boxes_pred[..., 1] + 0.5 * heights_pred
-			widths_gt = boxes_gt[..., 2] - boxes_gt[..., 0] + 1.0
-			heights_gt = boxes_gt[..., 3] - boxes_gt[..., 1] + 1.0
-			centerxs_gt = boxes_gt[..., 0] + 0.5 * widths_gt
-			centerys_gt = boxes_gt[..., 1] + 0.5 * heights_gt
-			# calculate targets
-			dxs_target = (centerxs_gt - centerxs_pred) / widths_pred
-			dys_target = (centerys_gt - centerys_pred) / heights_pred
-			dws_target = torch.log(widths_gt / widths_pred)
-			dhs_target = torch.log(heights_gt / heights_pred)
-		else:
-			raise ValueError('boxes_pred dimension error in BBoxFunctions.encodeBboxes')
-		return torch.stack((dxs_target, dys_target, dws_target, dhs_target), 2)
+		# convert (x1, y1, x2, y2) to (cx, cy, w, h) 
+		widths_pred = boxes_pred[..., 2] - boxes_pred[..., 0] + 1.0
+		heights_pred = boxes_pred[..., 3] - boxes_pred[..., 1] + 1.0
+		centerxs_pred = boxes_pred[..., 0] + 0.5 * widths_pred
+		centerys_pred = boxes_pred[..., 1] + 0.5 * heights_pred
+		widths_gt = boxes_gt[..., 2] - boxes_gt[..., 0] + 1.0
+		heights_gt = boxes_gt[..., 3] - boxes_gt[..., 1] + 1.0
+		centerxs_gt = boxes_gt[..., 0] + 0.5 * widths_gt
+		centerys_gt = boxes_gt[..., 1] + 0.5 * heights_gt
+		# calculate targets
+		dxs_target = (centerxs_gt - centerxs_pred) / widths_pred
+		dys_target = (centerys_gt - centerys_pred) / heights_pred
+		dws_target = torch.log(widths_gt / widths_pred)
+		dhs_target = torch.log(heights_gt / heights_pred)
+		return torch.stack((dxs_target, dys_target, dws_target, dhs_target), -1)
 	'''decode bboxes'''
 	@staticmethod
 	def decodeBboxes(boxes, deltas):

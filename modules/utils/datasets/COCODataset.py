@@ -196,6 +196,7 @@ class COCODataset(Dataset):
 			transform = transforms.Compose([transforms.Resize(target_size),
 											transforms.ToTensor(),
 											transforms.Normalize(mean=means_norm, std=stds_norm)])
+		img = transform(img)
 		# return necessary data
 		return img, scale_factor, target_size
 	'''padding collate fn'''

@@ -8,6 +8,7 @@ import torch
 import warnings
 import argparse
 import torch.nn as nn
+import torch.optim as optim
 from modules.utils.utils import *
 from modules.utils.datasets import *
 from modules.RetinaNet import RetinanetFPNResNets
@@ -98,7 +99,7 @@ def train():
 			anchors, preds_cls, preds_reg, loss_cls, loss_reg = output
 			loss = loss_cls.mean() + loss_reg.mean()
 			logger_handle.info('[EPOCH]: %s/%s, [BATCH]: %s/%s, [LEARNING_RATE]: %s, [DATASET]: %s \n\t [LOSS]: loss_cls %.4f, loss_reg %.4f, total %.4f' % \
-								epoch, end_epoch, (batch_idx+1), len(dataloader), cfg.LEARNING_RATES[learning_rate_idx], args.datasetname, loss_cls.mean().item(), loss_reg.mean().item(), loss.mean().item())
+								(epoch, end_epoch, (batch_idx+1), len(dataloader), cfg.LEARNING_RATES[learning_rate_idx], args.datasetname, loss_cls.mean().item(), loss_reg.mean().item(), loss.mean().item()))
 			loss.backward()
 			optimizer.step()
 		# --save model
