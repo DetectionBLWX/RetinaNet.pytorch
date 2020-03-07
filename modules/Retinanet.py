@@ -43,6 +43,7 @@ class buildTargetLayer(nn.Module):
 		# prepare regression targets
 		reg_targets = gt_boxes.new(batch_size, keep_idxs.size(0), 4).fill_(0)
 		# build targets
+		for batch_idx in range(batch_size):
 			anchors_each = anchors.clone()
 			gt_boxes_each = gt_boxes[batch_idx][:num_gt_boxes[batch_idx].int().item()]
 			overlaps = BBoxFunctions.calcIoUs(anchors_each, gt_boxes_each[:, :-1])
@@ -102,14 +103,16 @@ class RetinanetBase(nn.Module):
 		# define regression and classification layer
 		self.regression_layer = None
 		self.classification_layer = None
+		# define the focal loss layer
+		self.focal_loss = None
 	'''forward'''
 	def forward(self, x, gt_boxes, img_info, num_gt_boxes):
 		batch_size = x.size(0)
 		feature_shapes = []
 		# get fpn features
 		features = self.fpn_model(x)
-		# get regression features
-		features_reg = []
+		# get regression prediction
+		preds_reg = []
 		for x in features:
 			# --record the shape of each feature map
 			feature_shapes.append([x.size(2), x.size(3)])
@@ -119,10 +122,10 @@ class RetinanetBase(nn.Module):
 			# --convert (B, H, W, C) to (B, H*W*num_anchors, 4)
 			out = out.contiguous().view(batch_size, -1, 4)
 			# --append
-			features_reg.append(out)
-		features_reg = torch.cat(features_reg, dim=1)
-		# get classification features
-		features_cls = []
+			preds_reg.append(out)
+		preds_reg = torch.cat(preds_reg, dim=1)
+		# get classification prediction
+		preds_cls = []
 		for x in features:
 			out = self.classification_layer(x)
 			# --convert (B, C, H, W) to (B, H, W, C)
@@ -132,8 +135,8 @@ class RetinanetBase(nn.Module):
 			# --convert (B, H, W, num_anchors, num_classes) to (B, H*W*num_anchors, num_classes)
 			out = out.view(batch_size, -1, self.num_classes)
 			# --append
-			features_cls.append(out)
-		features_cls = torch.cat(features_cls, dim=1)
+			preds_cls.append(out)
+		preds_cls = torch.cat(preds_cls, dim=1)
 		# get anchors
 		anchors = RetinanetBase.generateAnchors(base_sizes=self.anchor_base_sizes, scales=self.anchor_scales, ratios=self.anchor_ratios, feature_shapes=feature_shapes, feature_strides=self.feature_strides)
 		anchors = anchors.type_as(x)
@@ -143,8 +146,27 @@ class RetinanetBase(nn.Module):
 		# if mode == 'TRAIN', calculate loss
 		if self.mode == 'TRAIN' and gt_boxes is not None:
 			targets = self.build_target_layer((anchors.data, gt_boxes, img_info, num_gt_boxes))
+			cls_targets, reg_targets = targets
+			# --calculate regression loss
+			if self.cfg.REG_LOSS_SET['type'] == 'betaSmoothL1Loss':
+				loss_reg = betaSmoothL1Loss(bbox_preds=preds_reg[cls_targets>0].view(-1, 4), 
+											bbox_targets=reg_targets[cls_targets>0].view(-1, 4), 
+											beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
+											size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
+											loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'])
+			else:
+				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
+			# --calculate classification loss
+			if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
+				cls_targets_filtered = cls_targets[cls_targets > 0]
+				preds_cls_filtered = preds_cls[cls_targets > 0]
+				cls_targets_filtered_one_hot = cls_targets_filtered.new(*cls_targets_filtered.size(), self.num_classes).fill_(0)
+				cls_targets_filtered_one_hot.scatter_(2, cls_targets_filtered.unsqueeze(-1).long(), 1)
+				loss_cls = self.focal_loss(preds_cls_filtered.view(-1, 1), cls_targets_filtered_one_hot.view(-1, 1))
+			else:
+				raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
 		# return the necessary data
-		return nn.Sigmoid()(features_cls), features_reg, loss_cls, loss_reg
+		return anchors, nn.Sigmoid()(preds_cls), preds_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
 		raise NotImplementedError
@@ -225,6 +247,11 @@ class RetinanetFPNResNets(RetinanetBase):
 												 nn.ReLU(inplace=True),
 												 nn.Conv2d(in_channels=256, out_channels=self.num_anchors*self.num_classes, kernel_size=3, stride=1, padding=1),
 												 nn.Sigmoid())
+		# define the focal loss layer
+		self.focal_loss = FocalLoss(gamma=cfg.CLS_LOSS_SET['focal_loss']['gamma'], 
+									alpha=cfg.CLS_LOSS_SET['focal_loss']['alpha'], 
+									size_average=cfg.CLS_LOSS_SET['focal_loss']['size_average'], 
+									loss_weight=cfg.CLS_LOSS_SET['focal_loss']['weight'])
 		# weights initialize
 		if mode == 'TRAIN' and cfg.ADDED_MODULES_WEIGHT_INIT_METHOD:
 			self.initializeAddedModules(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD)

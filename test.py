@@ -68,10 +68,43 @@ def test():
 		img_ids.append(img_id)
 		with torch.no_grad():
 			output = model(x=img.type(FloatTensor), gt_boxes=gt_boxes.type(FloatTensor), img_info=img_info.type(FloatTensor), num_gt_boxes=num_gt_boxes.type(FloatTensor))
-		cls_probs = output[0].data
-		bbox_preds = output[1].data
+		anchors = output[0].data
+		preds_cls = output[1].data
+		preds_reg = output[2].data
 		# --parse the results
-		pass
+		preds_reg = preds_reg.view(-1, 4) * torch.FloatTensor(cfg.BBOX_NORMALIZE_STDS).type(FloatTensor) + torch.FloatTensor(cfg.BBOX_NORMALIZE_MEANS).type(FloatTensor)
+		preds_reg = preds_reg.view(1, -1, 4)
+		boxes_pred = BBoxFunctions.decodeBboxes(anchors, preds_reg)
+		boxes_pred = BBoxFunctions.clipBoxes(boxes_pred, torch.from_numpy(np.array([h_ori*scale_factor, w_ori*scale_factor, scale_factor])).unsqueeze(0).type(FloatTensor).data)
+		boxes_pred = boxes_pred.squeeze()
+		scores = preds_cls.squeeze()
+		thresh = 0.05
+		for j in range(1, cfg.NUM_CLASSES):
+			idxs = torch.nonzero(scores[:, j] > thresh).view(-1)
+			if idxs.numel() > 0:
+				cls_scores = scores[:, j][idxs]
+				_, order = torch.sort(cls_scores, 0, True)
+				cls_boxes = boxes_pred[idxs, :]
+				cls_dets = torch.cat((cls_boxes, cls_scores.unsqueeze(1)), 1)
+				cls_dets = cls_dets[order]
+				cls_dets, _ = nms(cls_dets, args.nmsthresh)
+				for cls_det in cls_dets:
+					category_id = dataset.clsids2cococlsids_dict.get(j)
+					x1, y1, x2, y2, score = cls_det
+					x1 = x1.item() / scale_factor
+					x2 = x2.item() / scale_factor
+					y1 = y1.item() / scale_factor
+					y2 = y2.item() / scale_factor
+					bbox = [x1, y1, x2, y2]
+					bbox[2] = bbox[2] - bbox[0]
+					bbox[3] = bbox[3] - bbox[1]
+					image_result = {
+									'image_id': img_id,
+									'category_id': int(category_id),
+									'score': float(score.item()),
+									'bbox': bbox
+								}
+					results.append(image_result)
 	json.dump(results, open(cfg.TEST_BBOXES_SAVE_PATH, 'w'), indent=4)
 	if args.datasettype in ['val2017']:
 		dataset.doDetectionEval(img_ids, cfg.TEST_BBOXES_SAVE_PATH)

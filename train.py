@@ -95,7 +95,7 @@ def train():
 			optimizer.zero_grad()
 			img_ids, imgs, gt_boxes, img_info, num_gt_boxes = samples
 			output = model(x=imgs.type(FloatTensor), gt_boxes=gt_boxes.type(FloatTensor), img_info=img_info.type(FloatTensor), num_gt_boxes=num_gt_boxes.type(FloatTensor))
-			cls_probs, bbox_preds, loss_cls, loss_reg = output
+			anchors, preds_cls, preds_reg, loss_cls, loss_reg = output
 			loss = loss_cls.mean() + loss_reg.mean()
 			logger_handle.info('[EPOCH]: %s/%s, [BATCH]: %s/%s, [LEARNING_RATE]: %s, [DATASET]: %s \n\t [LOSS]: loss_cls %.4f, loss_reg %.4f, total %.4f' % \
 								epoch, end_epoch, (batch_idx+1), len(dataloader), cfg.LEARNING_RATES[learning_rate_idx], args.datasetname, loss_cls.mean().item(), loss_reg.mean().item(), loss.mean().item())
