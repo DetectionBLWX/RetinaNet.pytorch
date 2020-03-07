@@ -31,7 +31,7 @@ def parseArgs():
 
 
 '''detect objects in one image'''
-def test():
+def demo():
 	# prepare base things
 	args = parseArgs()
 	cfg, cfg_file_path = getCfgByDatasetAndBackbone(datasetname=args.datasetname, backbonename=args.backbonename)
@@ -70,7 +70,7 @@ def test():
 	preds_reg = preds_reg.view(-1, 4) * torch.FloatTensor(cfg.BBOX_NORMALIZE_STDS).type(FloatTensor) + torch.FloatTensor(cfg.BBOX_NORMALIZE_MEANS).type(FloatTensor)
 	preds_reg = preds_reg.view(1, -1, 4)
 	boxes_pred = BBoxFunctions.decodeBboxes(anchors, preds_reg)
-	boxes_pred = BBoxFunctions.clipBoxes(boxes_pred, torch.from_numpy(np.array([h_ori*scale_factor, w_ori*scale_factor, scale_factor])).unsqueeze(0).type(FloatTensor).data)
+	boxes_pred = BBoxFunctions.clipBoxes(boxes_pred, img_info.data)
 	boxes_pred = boxes_pred.squeeze()
 	scores = preds_cls.squeeze()
 	thresh = 0.05
