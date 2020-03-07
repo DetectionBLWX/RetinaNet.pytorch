@@ -68,7 +68,7 @@ def test():
 		img_ids.append(img_id)
 		with torch.no_grad():
 			output = model(x=img.type(FloatTensor), gt_boxes=gt_boxes.type(FloatTensor), img_info=img_info.type(FloatTensor), num_gt_boxes=num_gt_boxes.type(FloatTensor))
-		anchors = output[0].data
+		anchors = output[0].data.view(1, -1, 4)
 		preds_cls = output[1].data
 		preds_reg = output[2].data
 		# --parse the results

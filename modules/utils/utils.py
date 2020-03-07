@@ -121,10 +121,10 @@ class BBoxFunctions(object):
 		dys = deltas[..., 1::4]
 		dws = deltas[..., 2::4]
 		dhs = deltas[..., 3::4]
-		cxs_pred = dxs * widths.unsqueeze(2) + cxs.unsqueeze(2)
-		cys_pred = dys * heights.unsqueeze(2) + cys.unsqueeze(2)
-		ws_pred = torch.exp(dws) * widths.unsqueeze(2)
-		hs_pred = torch.exp(dhs) * heights.unsqueeze(2)
+		cxs_pred = dxs * widths.unsqueeze(-1) + cxs.unsqueeze(-1)
+		cys_pred = dys * heights.unsqueeze(-1) + cys.unsqueeze(-1)
+		ws_pred = torch.exp(dws) * widths.unsqueeze(-1)
+		hs_pred = torch.exp(dhs) * heights.unsqueeze(-1)
 		boxes_pred = deltas.clone()
 		boxes_pred[..., 0::4] = cxs_pred - ws_pred * 0.5
 		boxes_pred[..., 1::4] = cys_pred - hs_pred * 0.5

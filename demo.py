@@ -63,7 +63,7 @@ def test():
 	num_gt_boxes = torch.FloatTensor([0]).unsqueeze(0).type(FloatTensor)
 	with torch.no_grad():
 		output = model(x=input_img, gt_boxes=gt_boxes, img_info=img_info, num_gt_boxes=num_gt_boxes)
-	anchors = output[0].data
+	anchors = output[0].data.view(1, -1, 4)
 	preds_cls = output[1].data
 	preds_reg = output[2].data
 	# parse the results
