@@ -158,8 +158,8 @@ class RetinanetBase(nn.Module):
 				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
 			# --calculate classification loss
 			if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
-				cls_targets_filtered = cls_targets[cls_targets > 0].view(-1)
-				preds_cls_filtered = preds_cls[cls_targets > 0]
+				cls_targets_filtered = cls_targets[cls_targets > -1].view(-1)
+				preds_cls_filtered = preds_cls[cls_targets > -1]
 				cls_targets_filtered_one_hot = cls_targets_filtered.new(*cls_targets_filtered.size(), self.num_classes).fill_(0)
 				cls_targets_filtered_one_hot.scatter_(1, cls_targets_filtered.unsqueeze(-1).long(), 1)
 				loss_cls = self.focal_loss(preds_cls_filtered.view(-1, 1), cls_targets_filtered_one_hot.view(-1, 1).long())
