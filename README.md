@@ -15,8 +15,8 @@ Python: python3.x with torch==1.2.0, torchvision==0.4.0
 # Performance
 |  Backbone      | Train       |  Test         |  Pretrained Model  |  Epochs  |	Learning Rate		|   AP      					|
 |  :----:        | :----:      |  :----:       |  :----:    	    |  :----:  |	:----:				|   :----: 				        |
-| ResNet50-FPN   | trainval35k |  minival5k    |  Pytorch		    |  12	   |	1e-2/1e-3/1e-4   	|   -                           |
-| ResNet101-FPN  | trainval35k |  minival5k    |  Pytorch   	    |  12	   |	1e-2/1e-3/1e-4		|	-        					|
+|  ResNet50-FPN  | trainval35k |  minival5k    |  Pytorch		    |  12	   |	1e-2/1e-3/1e-4   	|   -                           |
+|  ResNet101-FPN | trainval35k |  minival5k    |  Pytorch   	    |  12	   |	1e-2/1e-3/1e-4		|	-        					|
 
 
 # Trained models
@@ -24,6 +24,7 @@ Python: python3.x with torch==1.2.0, torchvision==0.4.0
 You could get the trained models reported above at 
 
 ```
+
 
 # Usage
 #### Setup
@@ -88,5 +89,5 @@ optional arguments:
   --confthresh CONFTHRESH
                         thresh used in showing bounding box.
 cmd example:
-python demo.py --checkpointspath retinanet_res50_trainbackup_coco/epoch_12.pth --datasetname coco --backbonename resnet50 --imagepath 000001.jpg
+CUDA_VISIBLE_DEVICES=0 python demo.py --checkpointspath retinanet_res50_trainbackup_coco/epoch_12.pth --datasetname coco --backbonename resnet50 --imagepath 000001.jpg
 ```

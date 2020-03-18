@@ -10,7 +10,7 @@ def make_cuda_ext(name, module, sources):
     if torch.cuda.is_available() or os.getenv('FORCE_CUDA', '0') == '1':
         define_macros += [("WITH_CUDA", None)]
     else:
-        raise EnvironmentError('CUDA is required to compile MMDetection!')
+        raise EnvironmentError('CUDA is required to compile RetinaNet!')
     return CUDAExtension(
         name='{}.{}'.format(module, name),
         sources=[os.path.join(*module.split('.'), p) for p in sources],
