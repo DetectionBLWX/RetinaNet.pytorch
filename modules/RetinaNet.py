@@ -7,10 +7,9 @@ Author:
 import torch
 import numpy as np
 import torch.nn as nn
+from modules.utils import *
+from modules.losses import *
 from modules.backbones import *
-from modules.utils.utils import *
-from modules.losses.smoothL1 import *
-from modules.losses.focalLoss import *
 
 
 '''build target layer'''
@@ -93,11 +92,10 @@ class RetinanetBase(nn.Module):
 		self.cfg = cfg
 		self.num_classes = cfg.NUM_CLASSES
 		self.num_anchors = len(cfg.ANCHOR_RATIOS) * len(cfg.ANCHOR_SCALES)
-		self.anchor_base_sizes = cfg.ANCHOR_BASE_SIZES
-		self.anchor_ratios = cfg.ANCHOR_RATIOS
-		self.anchor_scales = cfg.ANCHOR_SCALES
 		# define fpn
 		self.fpn_model = None
+		# define the anchor generators
+		self.anchor_generators = [AnchorGenerator(size_base=size_base, scales=cfg.ANCHOR_SCALES, ratios=cfg.ANCHOR_RATIOS) for size_base in cfg.ANCHOR_BASE_SIZES]
 		# define build target layer
 		self.build_target_layer = None
 		# define regression and classification layer
@@ -138,8 +136,8 @@ class RetinanetBase(nn.Module):
 			preds_cls.append(out)
 		preds_cls = torch.cat(preds_cls, dim=1)
 		# get anchors
-		anchors = RetinanetBase.generateAnchors(base_sizes=self.anchor_base_sizes, scales=self.anchor_scales, ratios=self.anchor_ratios, feature_shapes=feature_shapes, feature_strides=self.feature_strides)
-		anchors = anchors.type_as(x)
+		anchors = [generator.generate(feature_shape=shape, feature_stride=stride, device=x.device) for (generator, shape, stride) in zip(self.anchor_generators, feature_shapes, self.feature_strides)]
+		anchors = torch.cat(anchors, 0).type_as(x)
 		# define losses
 		loss_cls = torch.Tensor([0]).type_as(x)
 		loss_reg = torch.Tensor([0]).type_as(x)
@@ -175,39 +173,6 @@ class RetinanetBase(nn.Module):
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
 		raise NotImplementedError
-	'''
-	Function:
-		generate anchors
-	Input:
-		--base_sizes(list): the base anchor size for each pyramid level.
-		--scales(list): scales for each pyramid level.
-		--ratios(list): ratios for anchor boxes in each pyramid level.
-		--feature_shapes(list): the size of feature maps in each pyramid level.
-		--feature_strides(list): the strides in each pyramid level.
-	Return:
-		--anchors(np.array): [nA, 4], the format is (x1, y1, x2, y2).
-	'''
-	@staticmethod
-	def generateAnchors(base_sizes=[32, 64, 128, 256, 512], scales=[1, 2**(1.0/3.0), 2**(2.0/3.0)], ratios=[0.5, 1, 2], feature_shapes=list(), feature_strides=list()):
-		assert (len(base_sizes) == len(feature_shapes)) and (len(feature_shapes) == len(feature_strides)), 'for <base_sizes> <feature_shapes> and <feature_strides>, expect the same length.'
-		anchors = []
-		for i in range(len(base_sizes)):
-			for scale in scales:
-				scales_pyramid, ratios_pyramid = np.meshgrid(np.array(scale*base_sizes[i]), np.array(ratios))
-				scales_pyramid, ratios_pyramid = scales_pyramid.flatten(), ratios_pyramid.flatten()
-				heights = scales_pyramid / np.sqrt(ratios_pyramid)
-				widths = scales_pyramid * np.sqrt(ratios_pyramid)
-				shifts_x = np.arange(0, feature_shapes[i][1], 1) * feature_strides[i] + 0.5 * feature_strides[i]
-				shifts_y = np.arange(0, feature_shapes[i][0], 1) * feature_strides[i] + 0.5 * feature_strides[i]
-				shifts_x, shifts_y = np.meshgrid(shifts_x, shifts_y)
-				widths, cxs = np.meshgrid(widths, shifts_x)
-				heights, cys = np.meshgrid(heights, shifts_y)
-				boxes_cxcy = np.stack([cxs, cys], axis=2).reshape([-1, 2])
-				boxes_whs = np.stack([widths, heights], axis=2).reshape([-1, 2])
-				anchors_pyramid = np.concatenate([boxes_cxcy-0.5*boxes_whs, boxes_cxcy+0.5*boxes_whs], axis=1)
-				anchors.append(anchors_pyramid)
-		anchors = np.concatenate(anchors, axis=0)
-		return torch.from_numpy(anchors).float()
 	'''set bn fixed'''
 	@staticmethod
 	def setBnFixed(m):

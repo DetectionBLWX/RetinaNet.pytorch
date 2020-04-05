@@ -10,8 +10,8 @@ import torch
 import random
 import numpy as np
 import torch.nn.functional as F
+from modules.utils import *
 from PIL import Image, ImageOps
-from modules.utils.utils import *
 from torch.utils.data import Dataset
 from torchvision.transforms import transforms
 sys.path.append(os.path.join(os.getcwd(), 'libs/cocoapi/PythonAPI'))
