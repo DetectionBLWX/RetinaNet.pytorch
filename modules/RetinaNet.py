@@ -151,7 +151,8 @@ class RetinanetBase(nn.Module):
 											bbox_targets=reg_targets[cls_targets>0].view(-1, 4), 
 											beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
 											size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
-											loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'])
+											loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'],
+											avg_factor=(cls_targets>0).sum())
 			else:
 				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
 			# --calculate classification loss
@@ -162,7 +163,7 @@ class RetinanetBase(nn.Module):
 			else:
 				raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
 		# return the necessary data
-		return anchors, nn.Sigmoid()(preds_cls), preds_reg, loss_cls, loss_reg
+		return anchors, preds_cls.sigmoid(), preds_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
 		# normal init
@@ -222,8 +223,7 @@ class RetinanetFPNResNets(RetinanetBase):
 												 nn.ReLU(inplace=True),
 												 nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
 												 nn.ReLU(inplace=True),
-												 nn.Conv2d(in_channels=256, out_channels=self.num_anchors*self.num_classes, kernel_size=3, stride=1, padding=1),
-												 nn.Sigmoid())
+												 nn.Conv2d(in_channels=256, out_channels=self.num_anchors*self.num_classes, kernel_size=3, stride=1, padding=1))
 		# define the focal loss layer
 		self.focal_loss = FocalLoss(gamma=cfg.CLS_LOSS_SET['focal_loss']['gamma'], 
 									alpha=cfg.CLS_LOSS_SET['focal_loss']['alpha'], 
