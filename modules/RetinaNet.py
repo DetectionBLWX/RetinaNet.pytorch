@@ -172,7 +172,21 @@ class RetinanetBase(nn.Module):
 		return anchors, nn.Sigmoid()(preds_cls), preds_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
-		raise NotImplementedError
+		# normal init
+		if init_method == 'normal':
+			normalInit(self.regression_layer[0], std=0.01)
+			normalInit(self.regression_layer[2], std=0.01)
+			normalInit(self.regression_layer[4], std=0.01)
+			normalInit(self.regression_layer[6], std=0.01)
+			normalInit(self.regression_layer[8], std=0.01)
+			normalInit(self.classification_layer[0], std=0.01)
+			normalInit(self.classification_layer[2], std=0.01)
+			normalInit(self.classification_layer[4], std=0.01)
+			normalInit(self.classification_layer[6], std=0.01)
+			normalInit(self.classification_layer[8], std=0.01, bias=biasInitWithProb(0.01))
+		# unsupport
+		else:
+			raise RuntimeError('Unsupport initializeAddedLayers.init_method <%s>...' % init_method)
 	'''set bn fixed'''
 	@staticmethod
 	def setBnFixed(m):
@@ -224,7 +238,8 @@ class RetinanetFPNResNets(RetinanetBase):
 									loss_weight=cfg.CLS_LOSS_SET['focal_loss']['weight'])
 		# weights initialize
 		if mode == 'TRAIN' and cfg.ADDED_MODULES_WEIGHT_INIT_METHOD:
-			self.initializeAddedModules(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD)
+			self.initializeAddedModules(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD['retina_head'])
+			self.fpn_model.initializeAddedLayers(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD['fpn'])
 		# fixed bn
 		self.fpn_model.apply(RetinanetBase.setBnFixed)
 		self.regression_layer.apply(RetinanetBase.setBnFixed)
