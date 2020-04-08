@@ -38,7 +38,7 @@ NUM_WARMUP_STEPS = 500
 GRAD_CLIP_MAX_NORM = 35
 GRAD_CLIP_NORM_TYPE = 2
 # image size
-IMAGESIZE_DICT = {'LONG_SIDE': 800, 'SHORT_SIDE': 800}
+IMAGESIZE_DICT = {'LONG_SIDE': 1333, 'SHORT_SIDE': 800}
 # record
 TRAIN_BACKUPDIR = 'retinanet_res101_trainbackup_coco'
 TRAIN_LOGFILE = 'retinanet_res101_trainbackup_coco/train.log'
