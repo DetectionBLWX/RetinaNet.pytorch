@@ -78,7 +78,7 @@ def test():
 		boxes_pred = boxes_pred.squeeze()
 		scores = preds_cls.squeeze()
 		thresh = 0.05
-		for j in range(1, cfg.NUM_CLASSES):
+		for j in range(cfg.NUM_CLASSES-1):
 			idxs = torch.nonzero(scores[:, j] > thresh).view(-1)
 			if idxs.numel() > 0:
 				cls_scores = scores[:, j][idxs]
