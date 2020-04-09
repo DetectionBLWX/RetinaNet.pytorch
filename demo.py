@@ -89,7 +89,7 @@ def demo():
 					x2 = x2.item() / scale_factor
 					y1 = y1.item() / scale_factor
 					y2 = y2.item() / scale_factor
-					label = clsnames[j-1]
+					label = clsnames[j]
 					logger_handle.info('Detect a %s in confidence %.4f...' % (label, cls_det[-1].item()))
 					color = (0, 255, 0)
 					draw = ImageDraw.Draw(img)

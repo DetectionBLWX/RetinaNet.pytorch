@@ -88,7 +88,7 @@ def test():
 				cls_dets = cls_dets[order]
 				cls_dets, _ = nms(cls_dets, args.nmsthresh)
 				for cls_det in cls_dets:
-					category_id = dataset.clsids2cococlsids_dict.get(j)
+					category_id = dataset.clsids2cococlsids_dict.get(j+1)
 					x1, y1, x2, y2, score = cls_det
 					x1 = x1.item() / scale_factor
 					x2 = x2.item() / scale_factor
