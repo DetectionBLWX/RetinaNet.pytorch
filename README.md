@@ -15,6 +15,8 @@ Python: python3.x with torch==1.2.0, torchvision==0.4.0
 # Performance
 |  Backbone      | Train       |  Test         |  Pretrained Model  |  Epochs  |	Learning Rate		|   AP      					|
 |  :----:        | :----:      |  :----:       |  :----:    	    |  :----:  |	:----:				|   :----: 				        |
+|  Res18-FPN     | trainval35k |  minival5k    |  Pytorch		    |  12	   |	1e-2/1e-3/1e-4   	|   -                           |
+|  Res34-FPN     | trainval35k |  minival5k    |  Pytorch   	    |  12	   |	1e-2/1e-3/1e-4		|	-        					|
 |  Res50-FPN     | trainval35k |  minival5k    |  Pytorch		    |  12	   |	1e-2/1e-3/1e-4   	|   -                           |
 |  Res101-FPN    | trainval35k |  minival5k    |  Pytorch   	    |  12	   |	1e-2/1e-3/1e-4		|	-        					|
 

@@ -60,13 +60,13 @@ class FPNResNets(nn.Module):
 		self.downsample_layer1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1)
 	'''forward'''
 	def forward(self, x):
-		# get the basic features
+		# bottom-up
 		c1 = self.base_layer0(x)
 		c2 = self.base_layer1(c1)
 		c3 = self.base_layer2(c2)
 		c4 = self.base_layer3(c3)
 		c5 = self.base_layer4(c4)
-		# top-down path
+		# top-down
 		p5 = self.lateral_layer0(c5)
 		p4 = self.upsampleAdd(p5, self.lateral_layer1(c4))
 		p3 = self.upsampleAdd(p4, self.lateral_layer2(c3))
