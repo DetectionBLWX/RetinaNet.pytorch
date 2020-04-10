@@ -255,6 +255,11 @@ class RetinanetFPNResNets(RetinanetBase):
 	'''set train mode'''
 	def setTrain(self):
 		nn.Module.train(self, True)
+		if self.cfg.FIXED_FRONT_BLOCKS:
+			for p in self.fpn_model.base_layer0.parameters():
+				p.requires_grad = False
+			for p in self.fpn_model.base_layer1.parameters():
+				p.requires_grad = False
 		self.fpn_model.apply(RetinanetBase.setBnEval)
 		self.regression_layer.apply(RetinanetBase.setBnEval)
 		self.classification_layer.apply(RetinanetBase.setBnEval)
