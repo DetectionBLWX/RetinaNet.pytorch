@@ -12,6 +12,7 @@ BG_IOU_THRESH = 0.4
 # backbone
 BACKBONE_TYPE = 'resnet34'
 PRETRAINED_MODEL_PATH = ''
+FIXED_FRONT_BLOCKS = True
 IS_MULTI_GPUS = True
 ADDED_MODULES_WEIGHT_INIT_METHOD = {'fpn': 'xavier', 'retina_head': 'normal'}
 # dataset

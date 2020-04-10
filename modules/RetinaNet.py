@@ -246,10 +246,12 @@ class RetinanetFPNResNets(RetinanetBase):
 		if mode == 'TRAIN' and cfg.ADDED_MODULES_WEIGHT_INIT_METHOD:
 			self.initializeAddedModules(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD['retina_head'])
 			self.fpn_model.initializeAddedLayers(cfg.ADDED_MODULES_WEIGHT_INIT_METHOD['fpn'])
-		# fixed bn
-		self.fpn_model.apply(RetinanetBase.setBnFixed)
-		self.regression_layer.apply(RetinanetBase.setBnFixed)
-		self.classification_layer.apply(RetinanetBase.setBnFixed)
+		# fix some first layers following original implementation
+		if cfg.FIXED_FRONT_BLOCKS:
+			for p in self.fpn_model.base_layer0.parameters():
+				p.requires_grad = False
+			for p in self.fpn_model.base_layer1.parameters():
+				p.requires_grad = False
 	'''set train mode'''
 	def setTrain(self):
 		nn.Module.train(self, True)
