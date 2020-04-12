@@ -73,7 +73,7 @@ class FPNResNets(nn.Module):
 		# obtain fpn features
 		p5 = self.smooth_layer0(p5)
 		p4 = self.smooth_layer1(p4)
-		p3 = self.smooth_layer1(p3)
+		p3 = self.smooth_layer2(p3)
 		p6 = self.downsample_layer0(c5)
 		p7 = self.downsample_layer1(F.relu(p6, inplace=True))
 		# return all feature pyramid levels
