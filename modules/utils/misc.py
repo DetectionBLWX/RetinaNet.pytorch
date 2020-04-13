@@ -7,6 +7,7 @@ Author:
 import os
 import torch
 import logging
+import numpy as np
 from torch.nn.utils import clip_grad
 
 
@@ -134,10 +135,10 @@ class BBoxFunctions(object):
 		dw = dw.clamp(min=-max_ratio, max=max_ratio)
 		dh = dh.clamp(min=-max_ratio, max=max_ratio)
 		# preds
-		px = ((preds[..., 0] + preds[..., 2]) * 0.5).unsqueeze(1).expand_as(dx)
-		py = ((preds[..., 1] + preds[..., 3]) * 0.5).unsqueeze(1).expand_as(dy)
-		pw = (preds[..., 2] - preds[..., 0] + 1.0).unsqueeze(1).expand_as(dw)
-		ph = (preds[..., 3] - preds[..., 1] + 1.0).unsqueeze(1).expand_as(dh)
+		px = ((preds[..., 0] + preds[..., 2]) * 0.5).unsqueeze(-1).expand_as(dx)
+		py = ((preds[..., 1] + preds[..., 3]) * 0.5).unsqueeze(-1).expand_as(dy)
+		pw = (preds[..., 2] - preds[..., 0] + 1.0).unsqueeze(-1).expand_as(dw)
+		ph = (preds[..., 3] - preds[..., 1] + 1.0).unsqueeze(-1).expand_as(dh)
 		# gts
 		gw = pw * dw.exp()
 		gh = ph * dh.exp()
