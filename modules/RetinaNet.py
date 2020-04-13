@@ -41,26 +41,33 @@ class buildTargetLayer(nn.Module):
 		cls_targets = gt_boxes.new(batch_size, keep_idxs.size(0)).fill_(-1)
 		# prepare regression targets
 		reg_targets = gt_boxes.new(batch_size, keep_idxs.size(0), 4).fill_(0)
-		# build targets
+		# build targets for anchors in each image
 		for batch_idx in range(batch_size):
 			anchors_each = anchors.clone()
 			gt_boxes_each = gt_boxes[batch_idx][:num_gt_boxes[batch_idx].int().item()]
-			overlaps = BBoxFunctions.calcIoUs(anchors_each, gt_boxes_each[:, :-1])
-			max_overlaps, argmax_overlaps = torch.max(overlaps, 1)
-			gt_max_overlaps, gt_argmax_overlaps = torch.max(overlaps, 0)
-			max_overlaps.index_fill_(0, gt_argmax_overlaps, 2)
-			for i in range(gt_argmax_overlaps.size(0)):
-				argmax_overlaps[gt_argmax_overlaps[i]] = i
-			cls_targets_each = gt_boxes_each[:, -1][argmax_overlaps]
-			# --add background and ignore
-			cls_targets_each[max_overlaps.lt(self.fg_iou_thresh)] = 0
-			cls_targets_each[max_overlaps.lt(self.fg_iou_thresh) & max_overlaps.gt(self.bg_iou_thresh)] = -1
-			# --encode boxes
-			reg_targets_each = gt_boxes_each[:, :-1][argmax_overlaps]
-			reg_targets_each = BBoxFunctions.encodeBboxes(anchors_each, reg_targets_each)
-			# --merge
+			overlaps = BBoxFunctions.calcIoUs(gt_boxes_each[:, :4].data, anchors_each.data)
+			num_gts, num_anchors = overlaps.size(0), overlaps.size(1)
+			assert (num_gts > 0) and (num_anchors > 0)
+			max_overlaps, argmax_overlaps = overlaps.max(dim=0)
+			gt_max_overlaps, gt_argmax_overlaps = overlaps.max(dim=1)
+			# --assign -1 by default
+			assign_gts_to_anchors = overlaps.new_full((num_anchors, ), -1, dtype=torch.long)
+			# --assign background
+			assign_gts_to_anchors[(max_overlaps >= 0) & (max_overlaps < self.bg_iou_thresh)] = 0
+			# --assign objects
+			pos_idxs = (max_overlaps >= self.fg_iou_thresh)
+			assign_gts_to_anchors[pos_idxs] = argmax_overlaps[pos_idxs] + 1
+			for i in range(num_gts):
+				if gt_max_overlaps[i] >= 0:
+					max_iou_idxs = (overlaps[i, :] == gt_max_overlaps[i])
+					assign_gts_to_anchors[max_iou_idxs] = i + 1
+			# --obtain targets for classification
+			pos_idxs = assign_gts_to_anchors > 0
+			cls_targets_each = assign_gts_to_anchors.clone().float()
+			cls_targets_each[pos_idxs] = gt_boxes_each[:, -1][assign_gts_to_anchors[pos_idxs] - 1]
 			cls_targets[batch_idx] = cls_targets_each
-			reg_targets[batch_idx] = reg_targets_each
+			# --obtain targets for regression
+			reg_targets[batch_idx][pos_idxs] = BBoxFunctions.encodeBboxes(anchors_each[pos_idxs], gt_boxes_each[:, :4][assign_gts_to_anchors[pos_idxs] - 1])
 		# post-processing
 		reg_targets = ((reg_targets - self.bbox_normalize_means.expand_as(reg_targets)) / self.bbox_normalize_stds.expand_as(reg_targets))
 		# unmap
