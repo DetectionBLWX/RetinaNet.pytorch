@@ -43,11 +43,10 @@ class buildTargetLayer(nn.Module):
 		reg_targets = gt_boxes.new(batch_size, keep_idxs.size(0), 4).fill_(0)
 		# build targets for anchors in each image
 		for batch_idx in range(batch_size):
-			anchors_each = anchors.clone()
-			gt_boxes_each = gt_boxes[batch_idx][:num_gt_boxes[batch_idx].int().item()]
-			overlaps = BBoxFunctions.calcIoUs(gt_boxes_each[:, :4].data, anchors_each.data)
+			anchors_single = anchors.clone()
+			gt_boxes_single = gt_boxes[batch_idx][:num_gt_boxes[batch_idx].int().item()]
+			overlaps = BBoxFunctions.calcIoUs(gt_boxes_single[:, :4].data, anchors_single.data)
 			num_gts, num_anchors = overlaps.size(0), overlaps.size(1)
-			assert (num_gts > 0) and (num_anchors > 0)
 			max_overlaps, argmax_overlaps = overlaps.max(dim=0)
 			gt_max_overlaps, gt_argmax_overlaps = overlaps.max(dim=1)
 			# --assign -1 by default
@@ -63,11 +62,11 @@ class buildTargetLayer(nn.Module):
 					assign_gts_to_anchors[max_iou_idxs] = i + 1
 			# --obtain targets for classification
 			pos_idxs = assign_gts_to_anchors > 0
-			cls_targets_each = assign_gts_to_anchors.clone().float()
-			cls_targets_each[pos_idxs] = gt_boxes_each[:, -1][assign_gts_to_anchors[pos_idxs] - 1]
-			cls_targets[batch_idx] = cls_targets_each
+			neg_idxs = assign_gts_to_anchors == 0
+			cls_targets[batch_idx][pos_idxs] = gt_boxes_single[:, -1][assign_gts_to_anchors[pos_idxs] - 1]
+			cls_targets[batch_idx][neg_idxs] = 0.
 			# --obtain targets for regression
-			reg_targets[batch_idx][pos_idxs] = BBoxFunctions.encodeBboxes(anchors_each[pos_idxs], gt_boxes_each[:, :4][assign_gts_to_anchors[pos_idxs] - 1])
+			reg_targets[batch_idx][pos_idxs] = BBoxFunctions.encodeBboxes(anchors_single[pos_idxs], gt_boxes_single[:, :4][assign_gts_to_anchors[pos_idxs] - 1])
 		# post-processing
 		reg_targets = ((reg_targets - self.bbox_normalize_means.expand_as(reg_targets)) / self.bbox_normalize_stds.expand_as(reg_targets))
 		# unmap
@@ -106,8 +105,8 @@ class RetinanetBase(nn.Module):
 		# define build target layer
 		self.build_target_layer = None
 		# define regression and classification layer
-		self.regression_layer = None
-		self.classification_layer = None
+		self.reg_layers = None
+		self.cls_layers = None
 		# define the focal loss layer
 		self.focal_loss = None
 	'''forward'''
@@ -121,28 +120,25 @@ class RetinanetBase(nn.Module):
 		for x in features:
 			# --record the shape of each feature map
 			feature_shapes.append([x.size(2), x.size(3)])
-			out = self.regression_layer(x)
-			# --convert (B, C, H, W) to (B, H, W, C)
-			out = out.permute(0, 2, 3, 1)
-			# --convert (B, H, W, C) to (B, H*W*num_anchors, 4)
-			out = out.contiguous().view(batch_size, -1, 4)
+			# --feed into the shared regression layers
+			out = self.reg_layers(x)
+			# --convert (B, num_anchors*4, H, W) to (B, H, W, num_anchors*4) to (B, H*W*num_anchors, 4)
+			out = out.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4)
 			# --append
 			preds_reg_list.append(out)
+		preds_reg = torch.cat(preds_reg_list, dim=1)
 		# get classification prediction
 		preds_cls_list = []
 		for x in features:
-			out = self.classification_layer(x)
-			# --convert (B, C, H, W) to (B, H, W, C)
-			out = out.permute(0, 2, 3, 1)
-			# --convert (B, H, W, C) to (B, H, W, num_anchors, num_classes)
-			out = out.contiguous().view(batch_size, out.size(1), out.size(2), self.num_anchors, self.num_classes)
-			# --convert (B, H, W, num_anchors, num_classes) to (B, H*W*num_anchors, num_classes)
-			out = out.view(batch_size, -1, self.num_classes)
+			# --feed into the shared classification layers
+			out = self.cls_layers(x)
+			# --convert (B, num_anchors*num_classes, H, W) to (B, H, W, num_anchors*num_classes) to (B, H*W*num_anchors, num_classes)
+			out = out.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, self.num_classes)
 			# --append
 			preds_cls_list.append(out)
+		preds_cls = torch.cat(preds_cls_list, dim=1)
 		# get anchors
 		anchors = [generator.generate(feature_shape=shape, feature_stride=stride, device=x.device) for (generator, shape, stride) in zip(self.anchor_generators, feature_shapes, self.feature_strides)]
-		num_anchors_levels = [a.size(0) for a in anchors]
 		anchors = torch.cat(anchors, 0).type_as(x)
 		# define losses
 		loss_cls = torch.Tensor([0]).type_as(x)
@@ -152,52 +148,41 @@ class RetinanetBase(nn.Module):
 			targets = self.build_target_layer((anchors.data, gt_boxes, img_info, num_gt_boxes))
 			cls_targets, reg_targets = targets
 			avg_factor = (cls_targets > 0).sum()
-			loss_reg_list, loss_cls_list, pointer = [], [], 0
-			for lvl_idx, num_anchors_level in enumerate(num_anchors_levels):
-				preds_reg_level = preds_reg_list[lvl_idx]
-				preds_cls_level = preds_cls_list[lvl_idx]
-				cls_targets_level = cls_targets[:, pointer: pointer+num_anchors_level]
-				reg_targets_level = reg_targets[:, pointer: pointer+num_anchors_level, :]
-				pointer = pointer + num_anchors_level
-				# --calculate regression loss
-				if self.cfg.REG_LOSS_SET['type'] == 'betaSmoothL1Loss':
-					loss_reg = betaSmoothL1Loss(bbox_preds=preds_reg_level[cls_targets_level>0].view(-1, 4), 
-												bbox_targets=reg_targets_level[cls_targets_level>0].view(-1, 4), 
-												beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
-												size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
-												loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'],
-												avg_factor=avg_factor)
-				else:
-					raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
-				loss_reg_list.append(loss_reg)
-				# --calculate classification loss
-				if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
-					cls_targets_level_filtered = cls_targets_level[cls_targets_level > -1].view(-1)
-					preds_cls_level_filtered = preds_cls_level[cls_targets_level > -1].view(-1, self.num_classes)
-					loss_cls = self.focal_loss(preds=preds_cls_level_filtered, 
-											   targets=cls_targets_level_filtered.long(),
-											   avg_factor=avg_factor)
-				else:
-					raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
-				loss_cls_list.append(loss_cls)
-			loss_reg = sum(l.mean() for l in loss_reg_list)
-			loss_cls = sum(l.mean() for l in loss_cls_list)
+			# --calculate regression loss
+			if self.cfg.REG_LOSS_SET['type'] == 'betaSmoothL1Loss':
+				mask = cls_targets > 0
+				loss_reg = betaSmoothL1Loss(bbox_preds=preds_reg[mask].view(-1, 4), 
+											bbox_targets=reg_targets[mask].view(-1, 4), 
+											beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
+											size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
+											loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'],
+											avg_factor=avg_factor)
+			else:
+				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
+			# --calculate classification loss
+			if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
+				cls_targets_filtered = cls_targets[cls_targets > -1].view(-1)
+				preds_cls_filtered = preds_cls[cls_targets > -1].view(-1, self.num_classes)
+				loss_cls = self.focal_loss(preds=preds_cls_filtered, 
+										   targets=cls_targets_filtered.long(),
+										   avg_factor=avg_factor)
+			else:
+				raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
 		# return the necessary data
-		return anchors, torch.cat(preds_cls_list, dim=1).sigmoid(), torch.cat(preds_reg_list, dim=1), loss_cls, loss_reg
+		return anchors, preds_cls.sigmoid(), preds_reg, loss_cls, loss_reg
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
 		# normal init
 		if init_method == 'normal':
-			normalInit(self.regression_layer[0], std=0.01)
-			normalInit(self.regression_layer[2], std=0.01)
-			normalInit(self.regression_layer[4], std=0.01)
-			normalInit(self.regression_layer[6], std=0.01)
-			normalInit(self.regression_layer[8], std=0.01)
-			normalInit(self.classification_layer[0], std=0.01)
-			normalInit(self.classification_layer[2], std=0.01)
-			normalInit(self.classification_layer[4], std=0.01)
-			normalInit(self.classification_layer[6], std=0.01)
-			normalInit(self.classification_layer[8], std=0.01, bias=biasInitWithProb(0.01))
+			for idx, layer in enumerate(self.reg_layers):
+				if isinstance(layer, nn.Conv2d):
+					normalInit(layer, std=0.01)
+			for idx, layer in enumerate(self.cls_layers):
+				if isinstance(layer, nn.Conv2d):
+					if idx+1 == len(self.cls_layers):
+						normalInit(layer, std=0.01, bias=biasInitWithProb(0.01))
+					else:
+						normalInit(layer, std=0.01)
 		# unsupport
 		else:
 			raise RuntimeError('Unsupport initializeAddedLayers.init_method <%s>...' % init_method)
@@ -226,24 +211,24 @@ class RetinanetFPNResNets(RetinanetBase):
 		# define build target layer
 		self.build_target_layer = buildTargetLayer(cfg)
 		# define regression and classification layer
-		self.regression_layer = nn.Sequential(nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-											  nn.ReLU(inplace=True),
-											  nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-											  nn.ReLU(inplace=True),
-											  nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-											  nn.ReLU(inplace=True),
-											  nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-											  nn.ReLU(inplace=True),
-											  nn.Conv2d(in_channels=256, out_channels=self.num_anchors*4, kernel_size=3, stride=1, padding=1))
-		self.classification_layer = nn.Sequential(nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-												 nn.ReLU(inplace=True),
-												 nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-												 nn.ReLU(inplace=True),
-												 nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-												 nn.ReLU(inplace=True),
-												 nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
-												 nn.ReLU(inplace=True),
-												 nn.Conv2d(in_channels=256, out_channels=self.num_anchors*self.num_classes, kernel_size=3, stride=1, padding=1))
+		self.reg_layers = nn.Sequential(nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=self.num_anchors*4, kernel_size=3, stride=1, padding=1))
+		self.cls_layers = nn.Sequential(nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=256, kernel_size=3, stride=1, padding=1),
+										nn.ReLU(inplace=True),
+										nn.Conv2d(in_channels=256, out_channels=self.num_anchors*self.num_classes, kernel_size=3, stride=1, padding=1))
 		# define the focal loss layer
 		self.focal_loss = FocalLoss(gamma=cfg.CLS_LOSS_SET['focal_loss']['gamma'], 
 									alpha=cfg.CLS_LOSS_SET['focal_loss']['alpha'], 
@@ -268,5 +253,5 @@ class RetinanetFPNResNets(RetinanetBase):
 			for p in self.fpn_model.base_layer1.parameters():
 				p.requires_grad = False
 		self.fpn_model.apply(RetinanetBase.setBnEval)
-		self.regression_layer.apply(RetinanetBase.setBnEval)
-		self.classification_layer.apply(RetinanetBase.setBnEval)
+		self.reg_layers.apply(RetinanetBase.setBnEval)
+		self.cls_layers.apply(RetinanetBase.setBnEval)

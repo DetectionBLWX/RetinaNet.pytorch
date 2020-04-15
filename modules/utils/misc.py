@@ -67,15 +67,16 @@ class BBoxFunctions(object):
 		self.info = 'bbox functions'
 	def __repr__(self):
 		return self.info
-	'''clip boxes, boxes size: B x N x 4, img_info: B x 3(height, width, scale_factor)'''
+	'''clip bboxes, bboxes size: B x N x 4, img_info: B x 3(height, width, scale_factor)'''
 	@staticmethod
-	def clipBoxes(boxes, img_info):
-		for i in range(boxes.size(0)):
-			boxes[i, :, 0::4].clamp_(0, img_info[i, 1]-1)
-			boxes[i, :, 1::4].clamp_(0, img_info[i, 0]-1)
-			boxes[i, :, 2::4].clamp_(0, img_info[i, 1]-1)
-			boxes[i, :, 3::4].clamp_(0, img_info[i, 0]-1)
-		return boxes
+	def clipBoxes(bboxes, img_info):
+		assert bboxes.size(0) == img_info.size(0)
+		for i in range(bboxes.size(0)):
+			bboxes[i, :, 0::4].clamp_(0, img_info[i, 1]-1)
+			bboxes[i, :, 1::4].clamp_(0, img_info[i, 0]-1)
+			bboxes[i, :, 2::4].clamp_(0, img_info[i, 1]-1)
+			bboxes[i, :, 3::4].clamp_(0, img_info[i, 0]-1)
+		return bboxes
 	'''calculate ious, bboxes1: N x 4, bboxes2: K x 4'''
 	@staticmethod
 	def calcIoUs(bboxes1, bboxes2, is_aligned=False):
