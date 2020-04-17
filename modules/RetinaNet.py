@@ -101,7 +101,7 @@ class RetinanetBase(nn.Module):
 		# define fpn
 		self.fpn_model = None
 		# define the anchor generators
-		self.anchor_generators = [AnchorGenerator(size_base=size_base, scales=cfg.ANCHOR_SCALES, ratios=cfg.ANCHOR_RATIOS) for size_base in cfg.ANCHOR_BASE_SIZES]
+		self.anchor_generators = None
 		# define build target layer
 		self.build_target_layer = None
 		# define regression and classification layer
@@ -115,30 +115,26 @@ class RetinanetBase(nn.Module):
 		feature_shapes = []
 		# get fpn features
 		features = self.fpn_model(x)
-		# get regression prediction
-		preds_reg_list = []
+		# do final regression and classification
+		preds_reg_list, preds_cls_list = [], []
 		for x in features:
 			# --record the shape of each feature map
 			feature_shapes.append([x.size(2), x.size(3)])
 			# --feed into the shared regression layers
-			out = self.reg_layers(x)
-			# --convert (B, num_anchors*4, H, W) to (B, H, W, num_anchors*4) to (B, H*W*num_anchors, 4)
-			out = out.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4)
+			preds_reg_lvl = self.reg_layers(x)
+			# --convert (B, *4, H, W) to (B, H, W, num_anchors*4) to (B, H*W*num_anchors, 4)
+			preds_reg_lvl = preds_reg_lvl.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4)
 			# --append
-			preds_reg_list.append(out)
-		preds_reg = torch.cat(preds_reg_list, dim=1)
-		# get classification prediction
-		preds_cls_list = []
-		for x in features:
+			preds_reg_list.append(preds_reg_lvl)
 			# --feed into the shared classification layers
-			out = self.cls_layers(x)
+			preds_cls_lvl = self.cls_layers(x)
 			# --convert (B, num_anchors*num_classes, H, W) to (B, H, W, num_anchors*num_classes) to (B, H*W*num_anchors, num_classes)
-			out = out.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, self.num_classes)
+			preds_cls_lvl = preds_cls_lvl.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, self.num_classes)
 			# --append
-			preds_cls_list.append(out)
-		preds_cls = torch.cat(preds_cls_list, dim=1)
+			preds_cls_list.append(preds_cls_lvl)
 		# get anchors
 		anchors = [generator.generate(feature_shape=shape, feature_stride=stride, device=x.device) for (generator, shape, stride) in zip(self.anchor_generators, feature_shapes, self.feature_strides)]
+		num_anchors_levels = [a.size(0) for a in anchors]
 		anchors = torch.cat(anchors, 0).type_as(x)
 		# define losses
 		loss_cls = torch.Tensor([0]).type_as(x)
@@ -148,28 +144,35 @@ class RetinanetBase(nn.Module):
 			targets = self.build_target_layer((anchors.data, gt_boxes, img_info, num_gt_boxes))
 			cls_targets, reg_targets = targets
 			avg_factor = (cls_targets > 0).sum()
-			# --calculate regression loss
-			if self.cfg.REG_LOSS_SET['type'] == 'betaSmoothL1Loss':
-				mask = cls_targets > 0
-				loss_reg = betaSmoothL1Loss(bbox_preds=preds_reg[mask].view(-1, 4), 
-											bbox_targets=reg_targets[mask].view(-1, 4), 
-											beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
-											size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
-											loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'],
-											avg_factor=avg_factor)
-			else:
-				raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
-			# --calculate classification loss
-			if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
-				cls_targets_filtered = cls_targets[cls_targets > -1].view(-1)
-				preds_cls_filtered = preds_cls[cls_targets > -1].view(-1, self.num_classes)
-				loss_cls = self.focal_loss(preds=preds_cls_filtered, 
-										   targets=cls_targets_filtered.long(),
-										   avg_factor=avg_factor)
-			else:
-				raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
+			loss_reg_list, loss_cls_list, pointer = [], [], 0
+			for lvl_idx, num_anchors_lvl in enumerate(num_anchors_levels):
+				preds_reg_lvl = preds_reg_list[lvl_idx]
+				preds_cls_lvl = preds_cls_list[lvl_idx]
+				cls_targets_lvl = cls_targets[:, pointer: pointer+num_anchors_lvl]
+				reg_targets_lvl = reg_targets[:, pointer: pointer+num_anchors_lvl, :]
+				pointer = pointer + num_anchors_lvl
+				# --calculate regression loss
+				if self.cfg.REG_LOSS_SET['type'] == 'betaSmoothL1Loss':
+					loss_reg_lvl = betaSmoothL1Loss(bbox_preds=preds_reg_lvl[cls_targets_lvl>0].view(-1, 4),
+													bbox_targets=reg_targets_lvl[cls_targets_lvl>0].view(-1, 4), 
+													beta=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['beta'], 
+													size_average=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['size_average'],
+													loss_weight=self.cfg.REG_LOSS_SET['betaSmoothL1Loss']['weight'],
+													avg_factor=avg_factor)
+				else:
+					raise ValueError('Unkown regression loss type <%s>...' % self.cfg.REG_LOSS_SET['type'])
+				loss_reg_list.append(loss_reg_lvl)
+				# --calculate classification loss
+				if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
+					cls_targets_lvl_filtered = cls_targets_lvl[cls_targets_lvl > -1].view(-1)
+					preds_cls_lvl_filtered = preds_cls_lvl[cls_targets_lvl > -1].view(-1, self.num_classes)
+					loss_cls = self.focal_loss(preds=preds_cls_lvl_filtered, 
+											   targets=cls_targets_lvl_filtered.long(),
+											   avg_factor=avg_factor)
+				else:
+					raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
 		# return the necessary data
-		return anchors, preds_cls.sigmoid(), preds_reg, loss_cls, loss_reg
+		return anchors, torch.cat(preds_cls_list, dim=1).sigmoid(), torch.cat(preds_reg_list, dim=1), loss_cls, loss_reg
 	'''initialize except for backbone network'''
 	def initializeAddedModules(self, init_method):
 		# normal init
@@ -208,6 +211,8 @@ class RetinanetFPNResNets(RetinanetBase):
 		RetinanetBase.__init__(self, mode, cfg)
 		# define fpn
 		self.fpn_model = FPNResNets(mode, cfg, logger_handle)
+		# define the anchor generators
+		self.anchor_generators = [AnchorGenerator(size_base=size_base, scales=cfg.ANCHOR_SCALES, ratios=cfg.ANCHOR_RATIOS) for size_base in cfg.ANCHOR_BASE_SIZES]
 		# define build target layer
 		self.build_target_layer = buildTargetLayer(cfg)
 		# define regression and classification layer
