@@ -166,11 +166,14 @@ class RetinanetBase(nn.Module):
 				if self.cfg.CLS_LOSS_SET['type'] == 'focal_loss':
 					cls_targets_lvl_filtered = cls_targets_lvl[cls_targets_lvl > -1].view(-1)
 					preds_cls_lvl_filtered = preds_cls_lvl[cls_targets_lvl > -1].view(-1, self.num_classes)
-					loss_cls = self.focal_loss(preds=preds_cls_lvl_filtered, 
-											   targets=cls_targets_lvl_filtered.long(),
-											   avg_factor=avg_factor)
+					loss_cls_lvl = self.focal_loss(preds=preds_cls_lvl_filtered, 
+												   targets=cls_targets_lvl_filtered.long(),
+												   avg_factor=avg_factor)
 				else:
 					raise ValueError('Unkown classification loss type <%s>...' % self.cfg.CLS_LOSS_SET['type'])
+				loss_cls_list.append(loss_cls_lvl)
+			loss_reg = sum(loss_reg_list)
+			loss_cls = sum(loss_cls_list)
 		# return the necessary data
 		return anchors, torch.cat(preds_cls_list, dim=1).sigmoid(), torch.cat(preds_reg_list, dim=1), loss_cls, loss_reg
 	'''initialize except for backbone network'''
