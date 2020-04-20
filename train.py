@@ -7,8 +7,8 @@ Author:
 import torch
 import warnings
 import argparse
-import torch.optim as optim
 from modules.utils import *
+from modules.optimizer import *
 from modules.RetinaNet import RetinanetFPNResNets
 from cfgs.getcfg import getCfgByDatasetAndBackbone
 warnings.filterwarnings('ignore')
@@ -61,7 +61,12 @@ def train():
 		learning_rate = cfg.LEARNING_RATES[learning_rate_idx] / 3
 	else:
 		learning_rate = cfg.LEARNING_RATES[learning_rate_idx]
-	optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, momentum=cfg.MOMENTUM, weight_decay=cfg.WEIGHT_DECAY)
+	if cfg.OPTIMIZER_SET['type'] == 'sgd':
+		optimizer_set = cfg.OPTIMIZER_SET['sgd']
+		optimizer_set.update({'learning_rate': learning_rate})
+		optimizer = SGDBuilder(model, optimizer_set, True)
+	else:
+		raise ValueError('Unsupport optimizer <%s> now...' % cfg.OPTIMIZER_SET['type'])
 	# check checkpoints path
 	if args.checkpointspath:
 		checkpoints = loadCheckpoints(args.checkpointspath, logger_handle)
@@ -75,7 +80,7 @@ def train():
 	if is_multi_gpus and is_distributed_training:
 		model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()], broadcast_buffers=False, find_unused_parameters=False)
 	elif is_multi_gpus:
-		model = NonDistributedDataParallel(model, device_ids=[torch.cuda.current_device()])
+		model = NonDistributedDataParallel(model, device_ids=range(torch.cuda.device_count()))
 	# print config
 	logger_handle.info('Dataset used: %s, Number of images: %s' % (args.datasetname, len(dataset)))
 	logger_handle.info('Backbone used: %s' % args.backbonename)

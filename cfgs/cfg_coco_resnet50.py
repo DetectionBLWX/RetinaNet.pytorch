@@ -40,8 +40,13 @@ BUILD_DATALOADER_SET = {
 CLS_LOSS_SET = {'type': 'focal_loss', 'focal_loss': {'size_average': True, 'weight': 1., 'alpha': 0.25, 'gamma': 2.0}}
 REG_LOSS_SET = {'type': 'betaSmoothL1Loss', 'betaSmoothL1Loss': {'size_average': True, 'weight': 1., 'beta': 0.11}}
 # optimizer
-MOMENTUM = 0.9
-WEIGHT_DECAY = 0.0001
+OPTIMIZER_SET = {
+					'type': 'sgd',
+					'sgd': {
+								'momentum': 0.9,
+								'weight_decay': 1e-4
+							}
+				}
 LEARNING_RATES = [1e-2, 1e-3, 1e-4]
 LR_ADJUST_EPOCHS = [9, 12]
 MAX_EPOCHS = 12

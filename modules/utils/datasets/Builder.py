@@ -23,11 +23,7 @@ if platform.system() != 'Windows':
 def buildNonDistributedDataloader(dataset, cfg, mode, **kwargs):
 	assert mode in ['TRAIN', 'TEST']
 	if mode == 'TRAIN':
-		if torch.cuda.is_available():
-			num_samples_per_gpu = int(np.ceil(cfg['batch_size'] / torch.cuda.device_count()))
-		else:
-			num_samples_per_gpu = cfg['batch_size']
-		sampler = cfg['sampler'](dataset.img_ratios, num_samples_per_gpu)
+		sampler = cfg['sampler'](dataset.img_ratios, cfg['batch_size'])
 		dataloader = torch.utils.data.DataLoader(dataset, 
 												 batch_size=cfg['batch_size'], 
 												 sampler=sampler, 
