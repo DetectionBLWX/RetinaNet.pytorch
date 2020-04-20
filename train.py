@@ -7,7 +7,6 @@ Author:
 import torch
 import warnings
 import argparse
-import torch.nn as nn
 import torch.optim as optim
 from modules.utils import *
 from modules.RetinaNet import RetinanetFPNResNets
@@ -33,11 +32,18 @@ def train():
 	checkDir(cfg.TRAIN_BACKUPDIR)
 	logger_handle = Logger(cfg.TRAIN_LOGFILE)
 	use_cuda = torch.cuda.is_available()
-	is_multi_gpus = cfg.IS_MULTI_GPUS
+	is_multi_gpus, is_distributed_training = cfg.IS_MULTI_GPUS, cfg.IS_DISTRIBUTED_TRAINING
+	if is_multi_gpus: assert use_cuda
 	# prepare dataset
 	if args.datasetname == 'coco':
 		dataset = COCODataset(rootdir=cfg.DATASET_ROOT_DIR, image_size_dict=cfg.IMAGESIZE_DICT, max_num_gt_boxes=cfg.MAX_NUM_GT_BOXES, use_color_jitter=cfg.USE_COLOR_JITTER, img_norm_info=cfg.IMAGE_NORMALIZE_INFO, mode='TRAIN', datasettype='train2017')
-		dataloader = torch.utils.data.DataLoader(dataset, batch_size=cfg.BATCHSIZE, sampler=NearestRatioRandomSampler(dataset.img_ratios, cfg.BATCHSIZE), num_workers=cfg.NUM_WORKERS, collate_fn=COCODataset.paddingCollateFn, pin_memory=cfg.PIN_MEMORY)
+		if cfg.IS_DISTRIBUTED_TRAINING:
+			build_dataloader_set = cfg.BUILD_DATALOADER_SET['distributed']
+			build_dataloader_set.update({'collate_fn': COCODataset.paddingCollateFn, 'sampler': DistributedGroupSampler})
+		else:
+			build_dataloader_set = cfg.BUILD_DATALOADER_SET['non_distributed']
+			build_dataloader_set.update({'collate_fn': COCODataset.paddingCollateFn, 'sampler': GroupSampler})
+		dataloader = buildDataloader(dataset, cfg=build_dataloader_set, mode='TRAIN', is_distribution=cfg.IS_DISTRIBUTED_TRAINING)
 	else:
 		raise ValueError('Unsupport backbonename <%s> now...' % args.backbonename)
 	# prepare model
@@ -66,8 +72,10 @@ def train():
 			if epoch in cfg.LR_ADJUST_EPOCHS:
 				learning_rate_idx += 1
 	# data parallel
-	if is_multi_gpus:
-		model = nn.DataParallel(model)
+	if is_multi_gpus and is_distributed_training:
+		model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()], broadcast_buffers=False, find_unused_parameters=False)
+	elif is_multi_gpus:
+		model = NonDistributedDataParallel(model, device_ids=[torch.cuda.current_device()])
 	# print config
 	logger_handle.info('Dataset used: %s, Number of images: %s' % (args.datasetname, len(dataset)))
 	logger_handle.info('Backbone used: %s' % args.backbonename)

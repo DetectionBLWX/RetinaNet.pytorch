@@ -9,6 +9,8 @@ BBOX_NORMALIZE_MEANS = (0.0, 0.0, 0.0, 0.0)
 BBOX_NORMALIZE_STDS = (1., 1., 1., 1.)
 FG_IOU_THRESH = 0.5
 BG_IOU_THRESH = 0.4
+# whether use the distributed training
+IS_DISTRIBUTED_TRAINING = False
 # backbone
 BACKBONE_TYPE = 'resnet50'
 PRETRAINED_MODEL_PATH = ''
@@ -19,12 +21,21 @@ ADDED_MODULES_WEIGHT_INIT_METHOD = {'fpn': 'xavier', 'retina_head': 'normal'}
 DATASET_ROOT_DIR = ''
 MAX_NUM_GT_BOXES = 50
 NUM_CLASSES = 81
-NUM_WORKERS = 8
-PIN_MEMORY = True
-BATCHSIZE = 16
 CLSNAMESPATH = 'names/coco.names'
 USE_COLOR_JITTER = False
 IMAGE_NORMALIZE_INFO = {'mean_rgb': (0.485, 0.456, 0.406), 'std_rgb': (0.229, 0.224, 0.225)}
+BUILD_DATALOADER_SET = {
+						'distributed': {
+										'num_workers_per_gpu': 2,
+										'num_imgs_per_gpu': 2,
+										'pin_memory': False
+									},
+						'non_distributed': {
+											'num_workers': 8,
+											'pin_memory': True,
+											'batch_size': 16
+										}
+					}
 # loss function
 CLS_LOSS_SET = {'type': 'focal_loss', 'focal_loss': {'size_average': True, 'weight': 1., 'alpha': 0.25, 'gamma': 2.0}}
 REG_LOSS_SET = {'type': 'betaSmoothL1Loss', 'betaSmoothL1Loss': {'size_average': True, 'weight': 1., 'beta': 0.11}}

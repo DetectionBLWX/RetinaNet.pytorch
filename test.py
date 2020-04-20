@@ -43,7 +43,7 @@ def test():
 		dataset = COCODataset(rootdir=cfg.DATASET_ROOT_DIR, image_size_dict=cfg.IMAGESIZE_DICT, max_num_gt_boxes=-1, use_color_jitter=False, img_norm_info=cfg.IMAGE_NORMALIZE_INFO, mode='TEST', datasettype=args.datasettype, annfilepath=args.annfilepath)
 	else:
 		raise ValueError('Unsupport datasetname <%s> now...' % args.datasetname)
-	dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+	dataloader = buildDataloader(dataset, cfg={'batch_size': 1, 'shuffle': False, 'num_workers': 0, 'pin_memory': True}, mode='TEST', is_distribution=False)
 	# prepare model
 	if args.backbonename.find('resnet') != -1:
 		model = RetinanetFPNResNets(mode='TEST', cfg=cfg, logger_handle=logger_handle)
