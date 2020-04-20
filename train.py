@@ -8,6 +8,7 @@ import os
 import torch
 import warnings
 import argparse
+import torch.distributed as dist
 from modules.utils import *
 from modules.optimizer import *
 from modules.RetinaNet import RetinanetFPNResNets
@@ -85,14 +86,14 @@ def train():
 	# data parallel
 	if is_multi_gpus and is_distributed_training:
 		model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()], broadcast_buffers=False, find_unused_parameters=False)
-		dataloader.sampler.setEpoch(start_epoch)
 	elif is_multi_gpus:
 		model = NonDistributedDataParallel(model, device_ids=range(torch.cuda.device_count()))
 	# print config
-	logger_handle.info('Dataset used: %s, Number of images: %s' % (args.datasetname, len(dataset)))
-	logger_handle.info('Backbone used: %s' % args.backbonename)
-	logger_handle.info('Checkpoints used: %s' % args.checkpointspath)
-	logger_handle.info('Config file used: %s' % cfg_file_path)
+	if args.local_rank == 0:
+		logger_handle.info('Dataset used: %s, Number of images: %s' % (args.datasetname, len(dataset)))
+		logger_handle.info('Backbone used: %s' % args.backbonename)
+		logger_handle.info('Checkpoints used: %s' % args.checkpointspath)
+		logger_handle.info('Config file used: %s' % cfg_file_path)
 	# train
 	FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 	for epoch in range(start_epoch, end_epoch+1):
@@ -101,6 +102,9 @@ def train():
 			model.module.setTrain()
 		else:
 			model.setTrain()
+		# --set epcoh for dataloader
+		if is_multi_gpus and is_distributed_training:
+			dataloader.sampler.setEpoch(epoch)
 		# --adjust learning rate
 		if epoch in cfg.LR_ADJUST_EPOCHS:
 			learning_rate_idx += 1
@@ -117,13 +121,30 @@ def train():
 			output = model(x=imgs.type(FloatTensor), gt_boxes=gt_boxes.type(FloatTensor), img_info=img_info.type(FloatTensor), num_gt_boxes=num_gt_boxes.type(FloatTensor))
 			anchors, preds_cls, preds_reg, loss_cls, loss_reg = output
 			loss = loss_cls.mean() + loss_reg.mean()
-			logger_handle.info('[EPOCH]: %s/%s, [BATCH]: %s/%s, [LEARNING_RATE]: %s, [DATASET]: %s \n\t [LOSS]: loss_cls %.4f, loss_reg %.4f, total %.4f' % \
-								(epoch, end_epoch, (batch_idx+1), len(dataloader), cfg.LEARNING_RATES[learning_rate_idx], args.datasetname, loss_cls.mean().item(), loss_reg.mean().item(), loss.item()))
+			if is_multi_gpus and is_distributed_training:
+				rank, world_size = getDistributionInfo()
+				loss_cls_log = loss_cls.data.clone()
+				dist.all_reduce(loss_cls_log.div_(dist.get_world_size()))
+				loss_cls_log = loss_cls_log.item()
+				loss_reg_log = loss_reg.data.clone()
+				dist.all_reduce(loss_reg_log.div_(dist.get_world_size()))
+				loss_reg_log = loss_reg_log.item()
+				loss_log = loss.data.clone()
+				dist.all_reduce(loss_log.div_(dist.get_world_size()))
+				loss_log = loss_log.item()
+			else:
+				rank = 0
+				loss_cls_log = loss_cls.mean().item()
+				loss_reg_log = loss_reg.mean().item()
+				loss_log = loss.item()
+			if rank == 0:
+				logger_handle.info('[EPOCH]: %s/%s, [BATCH]: %s/%s, [LEARNING_RATE]: %s, [DATASET]: %s \n\t [LOSS]: loss_cls %.4f, loss_reg %.4f, total %.4f' % \
+									(epoch, end_epoch, (batch_idx+1), len(dataloader), cfg.LEARNING_RATES[learning_rate_idx], args.datasetname, loss_cls_log, loss_reg_log, loss_log))
 			loss.backward()
 			clipGradients(model.parameters(), cfg.GRAD_CLIP_MAX_NORM, cfg.GRAD_CLIP_NORM_TYPE)
 			optimizer.step()
 		# --save model
-		if (epoch % cfg.SAVE_INTERVAL == 0) or (epoch == end_epoch):
+		if (args.local_rank == 0) and ((epoch % cfg.SAVE_INTERVAL == 0) or (epoch == end_epoch)):
 			state_dict = {'epoch': epoch,
 						  'model': model.module.state_dict() if is_multi_gpus else model.state_dict(),
 						  'optimizer': optimizer.state_dict()}
