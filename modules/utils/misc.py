@@ -164,7 +164,7 @@ def saveCheckpoints(state_dict, savepath, logger_handle):
 '''load checkpoints'''
 def loadCheckpoints(checkpointspath, logger_handle):
 	logger_handle.info('Loading checkpoints from %s...' % checkpointspath)
-	checkpoints = torch.load(checkpointspath)
+	checkpoints = torch.load(checkpointspath, map_location=torch.device('cpu'))
 	return checkpoints
 
 
