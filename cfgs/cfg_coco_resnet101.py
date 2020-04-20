@@ -11,6 +11,7 @@ FG_IOU_THRESH = 0.5
 BG_IOU_THRESH = 0.4
 # whether use the distributed training
 IS_DISTRIBUTED_TRAINING = False
+INIT_DISTRIBUTION_SET = {'launcher': 'pytorch', 'backend': 'nccl'}
 # backbone
 BACKBONE_TYPE = 'resnet101'
 PRETRAINED_MODEL_PATH = ''

@@ -4,6 +4,7 @@ Function:
 Author:
 	Charles
 '''
+import os
 import torch
 import warnings
 import argparse
@@ -20,7 +21,10 @@ def parseArgs():
 	parser.add_argument('--datasetname', dest='datasetname', help='dataset for training.', default='', type=str, required=True)
 	parser.add_argument('--backbonename', dest='backbonename', help='backbone network for training.', default='', type=str, required=True)
 	parser.add_argument('--checkpointspath', dest='checkpointspath', help='checkpoints you want to use.', default='', type=str)
+	parser.add_argument('--local_rank', dest='local_rank', help='local rank', default=0, type=int)
 	args = parser.parse_args()
+	if 'LOCAL_RANK' not in os.environ:
+		os.environ['LOCAL_RANK'] = str(args.local_rank)
 	return args
 
 
@@ -34,6 +38,8 @@ def train():
 	use_cuda = torch.cuda.is_available()
 	is_multi_gpus, is_distributed_training = cfg.IS_MULTI_GPUS, cfg.IS_DISTRIBUTED_TRAINING
 	if is_multi_gpus: assert use_cuda
+	if is_multi_gpus and is_distributed_training:
+		initializeDistribution(launcher=cfg.INIT_DISTRIBUTION_SET['launcher'], backend=cfg.INIT_DISTRIBUTION_SET['backend'])
 	# prepare dataset
 	if args.datasetname == 'coco':
 		dataset = COCODataset(rootdir=cfg.DATASET_ROOT_DIR, image_size_dict=cfg.IMAGESIZE_DICT, max_num_gt_boxes=cfg.MAX_NUM_GT_BOXES, use_color_jitter=cfg.USE_COLOR_JITTER, img_norm_info=cfg.IMAGE_NORMALIZE_INFO, mode='TRAIN', datasettype='train2017')
@@ -79,6 +85,7 @@ def train():
 	# data parallel
 	if is_multi_gpus and is_distributed_training:
 		model = DistributedDataParallel(model, device_ids=[torch.cuda.current_device()], broadcast_buffers=False, find_unused_parameters=False)
+		dataloader.sampler.setEpoch(start_epoch)
 	elif is_multi_gpus:
 		model = NonDistributedDataParallel(model, device_ids=range(torch.cuda.device_count()))
 	# print config

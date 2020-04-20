@@ -4,8 +4,10 @@ Function:
 Author:
 	Charles
 '''
+import os
 import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
 
 '''get distribution info'''
@@ -24,3 +26,16 @@ def getDistributionInfo():
 		rank = 0
 		world_size = 1
 	return rank, world_size
+
+
+'''initialize distribution'''
+def initializeDistribution(launcher='pytorch', backend='nccl', **kwargs):
+	if mp.get_start_method(allow_none=True) is None:
+		mp.set_start_method('spawn')
+	if launcher == 'pytorch':
+		rank = int(os.environ['RANK'])
+		num_gpus = torch.cuda.device_count()
+		torch.cuda.set_device(rank % num_gpus)
+		dist.init_process_group(backend=backend, **kwargs)
+	else:
+		raise ValueError('Unsupport initializeDistribution.launcher <%s>...' % launcher)
