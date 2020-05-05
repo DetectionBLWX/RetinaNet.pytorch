@@ -54,8 +54,9 @@ def loadclsnames(clsnamespath):
 
 
 '''adjust learning rate'''
-def adjustLearningRate(optimizer, target_lr, logger_handle):
-	logger_handle.info('Adjust learning rate to %s...' % str(target_lr))
+def adjustLearningRate(optimizer, target_lr, logger_handle=None):
+	if logger_handle is not None:
+		logger_handle.info('Adjust learning rate to %s...' % str(target_lr))
 	for param_group in optimizer.param_groups:
 		param_group['lr'] = target_lr
 	return True
