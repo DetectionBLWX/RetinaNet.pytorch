@@ -15,6 +15,7 @@ from ..utils.initialization import *
 class FeaturePyramidNetwork(nn.Module):
 	def __init__(self, mode, cfg, logger_handle, **kwargs):
 		super(FeaturePyramidNetwork, self).__init__()
+		self.cfg = cfg
 		self.logger_handle = logger_handle
 		self.pretrained_model_path = cfg.PRETRAINED_MODEL_PATH
 		# get the instanced backbone network and initialize it
@@ -74,7 +75,7 @@ class FeaturePyramidNetwork(nn.Module):
 			self.backbone.load_state_dict({k:v for k,v in torch.load(self.pretrained_model_path).items() if k in self.backbone.state_dict()})
 			self.logger_handle.info('Loading pretrained weights from %s for backbone network...' % self.pretrained_model_path)
 		else:
-			self.backbone = ResNets(resnet_type=self.backbone_type, pretrained=True)
+			self.backbone = ResNets(resnet_type=self.cfg.BACKBONE_TYPE, pretrained=True)
 	'''initialize added layers in fpn'''
 	def initializeAddedLayers(self, init_method='xavier'):
 		# normal init

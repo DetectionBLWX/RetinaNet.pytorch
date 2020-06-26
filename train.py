@@ -10,7 +10,7 @@ import warnings
 import argparse
 from modules.utils import *
 from modules.optimizer import *
-from modules.RetinaNet import RetinanetFPNResNets
+from modules.RetinaNet import RetinanetResNets
 from cfgs.getcfg import getCfgByDatasetAndBackbone
 warnings.filterwarnings('ignore')
 
