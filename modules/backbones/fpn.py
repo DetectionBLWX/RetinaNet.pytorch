@@ -1,41 +1,27 @@
 '''
 Function:
-	Feature Pyramid Network of ResNets
+	Define the feature pyramid network
 Author:
 	Charles
 '''
 import torch
-import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
-from modules.utils.initialization import *
+from .resnet import ResNets
+from ..utils.initialization import *
 
 
-'''resnet from torchvision==0.4.0'''
-def ResNets(resnet_type, pretrained=False):
-	if resnet_type == 'resnet18':
-		model = torchvision.models.resnet18(pretrained=pretrained)
-	elif resnet_type == 'resnet34':
-		model = torchvision.models.resnet34(pretrained=pretrained)
-	elif resnet_type == 'resnet50':
-		model = torchvision.models.resnet50(pretrained=pretrained)
-	elif resnet_type == 'resnet101':
-		model = torchvision.models.resnet101(pretrained=pretrained)
-	elif resnet_type == 'resnet152':
-		model = torchvision.models.resnet152(pretrained=pretrained)
-	else:
-		raise ValueError('Unsupport resnet_type <%s>...' % resnet_type)
-	return model
-
-
-'''FPN of resnets'''
-class FPNResNets(nn.Module):
+'''feature pyramid network'''
+class FeaturePyramidNetwork(nn.Module):
 	def __init__(self, mode, cfg, logger_handle, **kwargs):
-		super(FPNResNets, self).__init__()
+		super(FeaturePyramidNetwork, self).__init__()
 		self.logger_handle = logger_handle
 		self.pretrained_model_path = cfg.PRETRAINED_MODEL_PATH
 		# get the instanced backbone network and initialize it
-		self.backbone = ResNets(resnet_type=cfg.BACKBONE_TYPE, pretrained=False)
+		if cfg.BACKBONE_TYPE.find('resnet') != -1:
+			self.backbone = ResNets(resnet_type=cfg.BACKBONE_TYPE, pretrained=False)
+		else:
+			raise ValueError('Unsupport backbonename <%s> now...' % args.backbonename)
 		if mode == 'TRAIN':
 			self.initializeBackbone()
 		self.backbone.avgpool = None

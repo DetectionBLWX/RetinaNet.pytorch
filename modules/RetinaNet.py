@@ -208,12 +208,12 @@ class RetinanetBase(nn.Module):
 
 
 '''Retinanet using resnet-FPN backbones'''
-class RetinanetFPNResNets(RetinanetBase):
+class RetinanetResNets(RetinanetBase):
 	feature_strides = [8, 16, 32, 64, 128]
 	def __init__(self, mode, cfg, logger_handle, **kwargs):
 		RetinanetBase.__init__(self, mode, cfg)
 		# define fpn
-		self.fpn_model = FPNResNets(mode, cfg, logger_handle)
+		self.fpn_model = FeaturePyramidNetwork(mode, cfg, logger_handle)
 		# define the anchor generators
 		self.anchor_generators = [AnchorGenerator(size_base=size_base, scales=cfg.ANCHOR_SCALES, ratios=cfg.ANCHOR_RATIOS) for size_base in cfg.ANCHOR_BASE_SIZES]
 		# define build target layer
