@@ -12,7 +12,7 @@ import numpy as np
 from modules.utils import *
 from libs.nms.nms_wrapper import nms
 from PIL import Image, ImageDraw, ImageFont
-from modules.RetinaNet import RetinanetFPNResNets
+from modules.RetinaNet import RetinanetResNets
 from cfgs.getcfg import getCfgByDatasetAndBackbone
 warnings.filterwarnings("ignore")
 
@@ -41,7 +41,7 @@ def demo():
 	clsnames = loadclsnames(cfg.CLSNAMESPATH)
 	# prepare model
 	if args.backbonename.find('resnet') != -1:
-		model = RetinanetFPNResNets(mode='TEST', cfg=cfg, logger_handle=logger_handle)
+		model = RetinanetResNets(mode='TEST', cfg=cfg, logger_handle=logger_handle)
 	else:
 		raise ValueError('Unsupport backbonename <%s> now...' % args.backbonename)
 	if use_cuda:

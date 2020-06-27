@@ -11,7 +11,7 @@ import warnings
 import numpy as np
 from modules.utils import *
 from libs.nms.nms_wrapper import nms
-from modules.RetinaNet import RetinanetFPNResNets
+from modules.RetinaNet import RetinanetResNets
 from cfgs.getcfg import getCfgByDatasetAndBackbone
 warnings.filterwarnings("ignore")
 
@@ -46,7 +46,7 @@ def test():
 	dataloader = buildDataloader(dataset, cfg={'batch_size': 1, 'shuffle': False, 'num_workers': 0, 'pin_memory': True}, mode='TEST', is_distribution=False)
 	# prepare model
 	if args.backbonename.find('resnet') != -1:
-		model = RetinanetFPNResNets(mode='TEST', cfg=cfg, logger_handle=logger_handle)
+		model = RetinanetResNets(mode='TEST', cfg=cfg, logger_handle=logger_handle)
 	else:
 		raise ValueError('Unsupport backbonename <%s> now...' % args.backbonename)
 	if use_cuda:
