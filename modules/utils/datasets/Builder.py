@@ -5,8 +5,6 @@ Author:
 	Charles
 '''
 import torch
-import platform
-import numpy as np
 
 
 '''build dataloader for training'''
